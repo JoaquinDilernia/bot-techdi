@@ -27,7 +27,6 @@ const NAV_ITEMS = [
   { to: '/dashboard',     label: 'Dashboard',       icon: IconDashboard,  minRole: 'atencion_cliente' },
   { to: '/stats',         label: 'Estadísticas',    icon: IconChart,      minRole: 'atencion_cliente' },
   { to: '/knowledge',     label: 'Knowledge Base',  icon: IconBook,       minRole: 'atencion_cliente' },
-  { to: '/notifications', label: 'Notificaciones',  icon: IconBell },
   { to: '/areas',         label: 'Áreas',           icon: IconDepartment, minRole: 'atencion_cliente' },
   { to: '/labels',        label: 'Etiquetas',       icon: IconTag,        minRole: 'atencion_cliente' },
   { to: '/quick-replies', label: 'Resp. Rápidas',   icon: IconZap,        minRole: 'atencion_cliente' },

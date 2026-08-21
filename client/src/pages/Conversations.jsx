@@ -26,7 +26,6 @@ const FILTERS = [
   { value: 'critical',      label: '🔴 Crítico' },
   { value: 'urgent',        label: 'Urgentes' },
   { value: 'waiting',       label: 'Esperando ⏳' },
-  { value: 'notifications', label: 'Notificaciones' },
   { value: 'archived',      label: 'Archivos' },
   { value: 'teams',         label: 'Equipos',  minRole: 'atencion_cliente' },
 ];

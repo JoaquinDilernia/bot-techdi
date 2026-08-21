@@ -18,13 +18,11 @@ import templateRoutes from './routes/template.routes.js';
 import costsRoutes from './routes/costs.routes.js';
 import { initFirebase } from './services/firebase.service.js';
 import areaRoutes from './routes/area.routes.js';
-import notificationsRoutes from './routes/notifications.routes.js';
 import { seedAgentsIfNeeded } from './services/auth.service.js';
 import { seedAreasIfNeeded } from './services/area.service.js';
 import { requireAuth, requireAtLeastAtencionCliente } from './middleware/requireAuth.js';
 import { closeInactiveConversations } from './services/inactivity.service.js';
 import { sendEscalationFollowups } from './services/escalation.service.js';
-import { sendPickupFollowups } from './services/notifications.service.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -42,12 +40,6 @@ cron.schedule('0 * * * *', () => {
 // Escalation followup: every 30min, sends a reminder to clients waiting >2hs without agent response
 cron.schedule('*/30 * * * *', () => {
   sendEscalationFollowups().catch(err => console.error('[cron] escalation followup error:', err));
-});
-
-// Pickup followups: once a day, sends day-3/day-7 reminder templates for
-// orders still pending pickup after the initial notification
-cron.schedule('0 10 * * *', () => {
-  sendPickupFollowups().catch(err => console.error('[cron] pickup followup error:', err));
 });
 
 // Middleware
@@ -97,7 +89,6 @@ app.use('/api/costs',         requireAuth, requireAtLeastAtencionCliente, costsR
 // El propio router ya restringe crear/editar/borrar a requireAdmin —
 // la lectura la necesita cualquier operador para derivar conversaciones.
 app.use('/api/areas',         requireAuth, areaRoutes);
-app.use('/api/notifications',  requireAuth, notificationsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

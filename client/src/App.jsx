@@ -15,7 +15,6 @@ import QuickReplies  from './pages/QuickReplies.jsx';
 import Templates     from './pages/Templates.jsx';
 import Costs         from './pages/Costs.jsx';
 import Areas         from './pages/Areas.jsx';
-import Notifications from './pages/Notifications.jsx';
 import Users         from './pages/Users.jsx';
 
 export default function App() {
@@ -51,7 +50,6 @@ function AppRoutes() {
           <Route path="templates"     element={<Templates />} />
           <Route path="costs"         element={<Costs />} />
           <Route path="areas"         element={<Areas />} />
-          <Route path="notifications" element={<Notifications />} />
           <Route path="users"         element={<Users />} />
         </Route>
       </Routes>
