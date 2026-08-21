@@ -17,10 +17,10 @@ import quickReplyRoutes from './routes/quickreply.routes.js';
 import templateRoutes from './routes/template.routes.js';
 import costsRoutes from './routes/costs.routes.js';
 import { initFirebase } from './services/firebase.service.js';
-import departmentRoutes from './routes/department.routes.js';
+import areaRoutes from './routes/area.routes.js';
 import notificationsRoutes from './routes/notifications.routes.js';
 import { seedAgentsIfNeeded } from './services/auth.service.js';
-import { seedDepartmentsIfNeeded } from './services/department.service.js';
+import { seedAreasIfNeeded } from './services/area.service.js';
 import { requireAuth, requireAtLeastAtencionCliente } from './middleware/requireAuth.js';
 import { closeInactiveConversations } from './services/inactivity.service.js';
 import { sendEscalationFollowups } from './services/escalation.service.js';
@@ -32,7 +32,7 @@ const PORT = process.env.PORT || 3001;
 // Init Firebase
 initFirebase();
 seedAgentsIfNeeded().catch(err => console.error('[seed] Error seeding agents:', err));
-seedDepartmentsIfNeeded().catch(err => console.error('[seed] Error seeding departments:', err));
+seedAreasIfNeeded().catch(err => console.error('[seed] Error seeding areas:', err));
 
 // Inactivity cron: runs every hour, closes bot-handled conversations idle >24h
 cron.schedule('0 * * * *', () => {
@@ -96,7 +96,7 @@ app.use('/api/templates',     requireAuth, templateRoutes);
 app.use('/api/costs',         requireAuth, requireAtLeastAtencionCliente, costsRoutes);
 // El propio router ya restringe crear/editar/borrar a requireAdmin —
 // la lectura la necesita cualquier operador para derivar conversaciones.
-app.use('/api/departments',   requireAuth, departmentRoutes);
+app.use('/api/areas',         requireAuth, areaRoutes);
 app.use('/api/notifications',  requireAuth, notificationsRoutes);
 
 // Health check
