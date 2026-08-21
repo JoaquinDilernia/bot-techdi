@@ -8,7 +8,6 @@ import webhookRoutes from './routes/webhook.routes.js';
 import knowledgeRoutes from './routes/knowledge.routes.js';
 import conversationRoutes from './routes/conversation.routes.js';
 import configRoutes from './routes/config.routes.js';
-import tiendaNubeRoutes from './routes/tiendanube.routes.js';
 import customerRoutes from './routes/customer.routes.js';
 import testRoutes from './routes/test.routes.js';
 import authRoutes from './routes/auth.routes.js';
@@ -84,9 +83,8 @@ app.use('/api/knowledge',     requireAuth, requireAtLeastAtencionCliente, knowle
 // Los operadores necesitan leer la config (ej: seguimiento de retiro en
 // Notificaciones) — la restricción de escritura vive dentro del router.
 app.use('/api/config',        requireAuth, configRoutes);
-app.use('/api/tiendanube',    requireAuth, requireAtLeastAtencionCliente, tiendaNubeRoutes);
 // Un operador que atiende una conversación derivada necesita ver el perfil
-// del cliente (compras, notas) y poder actualizarlo — no es una acción de
+// del cliente (contacto, notas) y poder actualizarlo — no es una acción de
 // administración global como el resto de este bloque.
 app.use('/api/customers',     requireAuth, customerRoutes);
 app.use('/api/test',          requireAuth, requireAtLeastAtencionCliente, testRoutes);

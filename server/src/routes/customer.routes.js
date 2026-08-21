@@ -2,7 +2,6 @@ import { Router } from 'express';
 import {
   getCustomerProfile,
   updateCustomerNotes,
-  enrichCustomerFromTiendaNube,
 } from '../services/customer.service.js';
 
 const router = Router();
@@ -21,16 +20,6 @@ router.patch('/:contactId/notes', async (req, res) => {
   try {
     await updateCustomerNotes(req.params.contactId, req.body.notes ?? '');
     res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-router.post('/:contactId/sync', async (req, res) => {
-  try {
-    await enrichCustomerFromTiendaNube(req.params.contactId, true);
-    const profile = await getCustomerProfile(req.params.contactId);
-    res.json({ ok: true, customer: profile });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
