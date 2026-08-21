@@ -5,7 +5,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [agent, setAgent] = useState(null);
-  const [token, setToken] = useState(() => localStorage.getItem('altorancho_token'));
+  const [token, setToken] = useState(() => localStorage.getItem('techdi_token'));
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -19,7 +19,7 @@ export function AuthProvider({ children }) {
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(data => setAgent(data.agent))
       .catch(() => {
-        localStorage.removeItem('altorancho_token');
+        localStorage.removeItem('techdi_token');
         setToken(null);
       })
       .finally(() => setLoading(false));
@@ -36,19 +36,19 @@ export function AuthProvider({ children }) {
       throw new Error(err.error ?? 'Error al ingresar');
     }
     const data = await r.json();
-    localStorage.setItem('altorancho_token', data.token);
+    localStorage.setItem('techdi_token', data.token);
     setToken(data.token);
     setAgent(data.agent);
   }
 
   function logout() {
-    localStorage.removeItem('altorancho_token');
+    localStorage.removeItem('techdi_token');
     setToken(null);
     setAgent(null);
   }
 
   function updateAgent(newAgent, newToken) {
-    localStorage.setItem('altorancho_token', newToken);
+    localStorage.setItem('techdi_token', newToken);
     setToken(newToken);
     setAgent(newAgent);
   }

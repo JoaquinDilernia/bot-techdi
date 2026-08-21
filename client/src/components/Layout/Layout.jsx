@@ -3,7 +3,7 @@ import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import styles from './Layout.module.css';
 
-const COLLAPSED_KEY = 'altorancho_sidebar_collapsed';
+const COLLAPSED_KEY = 'techdi_sidebar_collapsed';
 
 function PageLoader() {
   return (
@@ -64,7 +64,7 @@ export default function Layout() {
         <button className={styles.hamburger} onClick={() => setMenuOpen(v => !v)} aria-label="Menú">
           <span /><span /><span />
         </button>
-        <span className={styles.mobileBrand}>Alto Rancho</span>
+        <span className={styles.mobileBrand}>TechDI</span>
       </header>
 
       {/* Backdrop */}
@@ -72,9 +72,9 @@ export default function Layout() {
 
       <aside className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ''} ${collapsed ? styles.sidebarCollapsed : ''}`}>
         <div className={styles.brand}>
-          <div className={styles.brandLogo}>A</div>
+          <div className={styles.brandLogo}>T</div>
           <div className={styles.brandText}>
-            <span className={styles.brandName}>Alto Rancho</span>
+            <span className={styles.brandName}>TechDI</span>
             <span className={styles.brandSub}>Bot Dashboard</span>
           </div>
         </div>

@@ -1,7 +1,7 @@
 import { getDb } from './firebase.service.js';
 import { findCustomerByPhone, getCustomerOrders } from './tiendanube.service.js';
 
-const COLLECTION = 'bot-altorancho_customers';
+const COLLECTION = 'bot-techdi_customers';
 const TN_CACHE_HOURS = 24;
 
 export async function getOrCreateCustomer(contactId, channel, contactName = null) {

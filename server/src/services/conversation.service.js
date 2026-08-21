@@ -3,7 +3,7 @@ import admin from 'firebase-admin';
 import { findOrder } from './tiendanube.service.js';
 import { findOdooOrder, getPartnerContact } from './odoo.service.js';
 
-const COLLECTION = 'bot-altorancho_conversations';
+const COLLECTION = 'bot-techdi_conversations';
 
 // Valid statuses: bot, escalated, bot_archived, resolved
 // 'urgent' is now a boolean flag (data.urgent), not a status

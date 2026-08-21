@@ -9,7 +9,7 @@ function logUsage(usage, type) {
   const costUSD =
     (usage.input_tokens / 1e6) * PRICING.inputPerMTok +
     (usage.output_tokens / 1e6) * PRICING.outputPerMTok;
-  getDb().collection('bot-altorancho_usage_logs').add({
+  getDb().collection('bot-techdi_usage_logs').add({
     service: 'claude',
     model: MODEL,
     inputTokens: usage.input_tokens,
@@ -158,7 +158,7 @@ export async function generateBotResponse(userMessage, conversationHistory, cont
 
 function buildSystemPrompt(botConfig = {}, knowledgeBase, orderInfo, orderRef, stockInfo, customerContext, availableLabels = [], departments = []) {
   const botName = botConfig.botName || 'Asistente';
-  const businessName = botConfig.businessName || 'Alto Rancho';
+  const businessName = botConfig.businessName || 'TechDI';
   const personality = botConfig.botPersonality ||
     `Respondés de forma amigable, natural y cercana — como lo haría una persona real del equipo.
 Usás un tono cálido y profesional. Nunca robótico ni genérico.

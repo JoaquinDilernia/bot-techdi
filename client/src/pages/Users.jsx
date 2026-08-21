@@ -134,7 +134,7 @@ export default function Users() {
                   type="email"
                   value={form.data.email}
                   onChange={e => setField('email', e.target.value)}
-                  placeholder="usuario@altorancho.com"
+                  placeholder="usuario@techdi.com"
                   required
                   disabled={form.mode === 'edit'}
                 />

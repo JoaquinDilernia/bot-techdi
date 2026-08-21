@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import { createHash } from 'crypto';
 import { getDb } from './firebase.service.js';
 
-const COLLECTION = 'bot-altorancho_agents';
+const COLLECTION = 'bot-techdi_agents';
 
 function hashPassword(password) {
   return createHash('sha256').update(password).digest('hex');
@@ -23,7 +23,7 @@ function toPublic(data) {
 }
 
 const ADMIN_SEEDS = [
-  { email: 'joaquin.dilernia@altorancho.com', name: 'Joaquín Di Lernia', password: 'altolett123' },
+  { email: 'joaquin.dilernia@techdi.com', name: 'Joaquín Di Lernia', password: 'altolett123' },
 ];
 
 export async function seedAgentsIfNeeded() {

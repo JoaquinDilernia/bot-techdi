@@ -80,7 +80,7 @@ const ENTRY_MENU_BODY = '¡Hola! 👋 Elegí una opción para que te pueda ayuda
 const ENTRY_MENU_BUTTON_TEXT = 'Ver opciones';
 const ENTRY_MENU_SECTIONS = [
   {
-    title: 'Alto Rancho',
+    title: 'TechDI',
     rows: [
       { id: 'menu_order_status', title: 'Estado de pedido', description: 'Consultar en qué está tu pedido' },
       { id: 'menu_order_change', title: 'Cambios y devoluciones', description: 'Cambiar o devolver un producto' },
@@ -129,11 +129,11 @@ const ORDER_TOPIC_FOLLOWUP = {
 };
 const STOCK_MENU_PROMPT = '¿Qué producto estás buscando?';
 const TALK_TO_AGENT_PROMPT = '¿Con qué equipo querés hablar?';
-const HORARIOS_FALLBACK = 'No tengo cargados los horarios en este momento. Te recomiendo chequear en https://altorancho.com/ o te derivo con el equipo si preferís.';
+const HORARIOS_FALLBACK = 'No tengo cargados los horarios en este momento. Te recomiendo chequear en https://techdi.com/ o te derivo con el equipo si preferís.';
 
 function buildDepartmentSections(departments) {
   return [{
-    title: 'Equipo Alto Rancho',
+    title: 'Equipo TechDI',
     rows: departments.map(d => ({ id: `dept_${d.id}`, title: d.name.slice(0, 24) })),
   }];
 }
@@ -369,7 +369,7 @@ async function processIncomingMessageInternal(msg) {
       getKnowledgeBasePrompt().catch(() => ''),
       getOrCreateCustomer(from, channel, contactName),
       getAllLabels().catch(() => []),
-      getDb().collection('bot-altorancho_config').doc('bot_config').get().catch(() => ({ exists: false, data: () => ({}) })),
+      getDb().collection('bot-techdi_config').doc('bot_config').get().catch(() => ({ exists: false, data: () => ({}) })),
       getActiveDepartments().then(d => d.filter(dep => dep.id !== 'admin')).catch(() => []),
     ]);
   } catch (err) {
@@ -537,7 +537,7 @@ async function processIncomingMessageInternal(msg) {
   }
 
   if (orderContext.orderRef) {
-    getDb().collection('bot-altorancho_conversations').doc(from)
+    getDb().collection('bot-techdi_conversations').doc(from)
       .update({ lastOrderRef: orderContext.orderRef })
       .catch(() => {});
   }
@@ -546,7 +546,7 @@ async function processIncomingMessageInternal(msg) {
   // un string lo guarda (se mencionó el local pero todavía no el número) —
   // undefined significa "no tocar" (el mensaje no tuvo nada que ver con esto).
   if (orderContext.pendingLocalStore !== undefined) {
-    getDb().collection('bot-altorancho_conversations').doc(from)
+    getDb().collection('bot-techdi_conversations').doc(from)
       .update({ pendingLocalStore: orderContext.pendingLocalStore })
       .catch(() => {});
   }

@@ -67,7 +67,7 @@ export default function Dashboard() {
       <header className={styles.header}>
         <div>
           <h1 className={styles.title}>{greeting()}, {agent?.name?.split(' ')[0]}</h1>
-          <p className={styles.subtitle}>Actividad de hoy · Alto Rancho Bot</p>
+          <p className={styles.subtitle}>Actividad de hoy · TechDI Bot</p>
         </div>
         <button className={styles.refreshBtn} onClick={load} title="Actualizar">
           <IconRefresh />

@@ -412,7 +412,7 @@ export function formatStockInfo(productName, sku, stockResult) {
     return `Producto: ${productName} (SKU: ${sku}) — Producto de exhibición\nDisponibilidad para ver en local:\n${lines}\n${webNote}`;
   }
 
-  const webNote = 'El cliente también puede consultar el stock actualizado directamente en la página del producto en el sitio web de Alto Rancho.';
+  const webNote = 'El cliente también puede consultar el stock actualizado directamente en la página del producto en el sitio web de TechDI.';
   return `Producto: ${productName} (SKU: ${sku})\nDisponibilidad en sucursales:\n${lines}\n${webNote}`;
 }
 

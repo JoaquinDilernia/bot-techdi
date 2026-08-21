@@ -1,6 +1,6 @@
 import { getDb } from './firebase.service.js';
 
-const COLLECTION = 'bot-altorancho_quick_replies';
+const COLLECTION = 'bot-techdi_quick_replies';
 
 export async function getAllQuickReplies() {
   const db = getDb();

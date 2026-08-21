@@ -161,7 +161,7 @@ const REPLY_ROLE_LABELS = { user: 'Cliente', admin: 'Agente', assistant: 'Alto' 
 function MessageBubble({ msg, onRetry, contactId }) {
   const isUser = msg.role === 'user';
   const isAdmin = msg.role === 'admin';
-  const token = localStorage.getItem('altorancho_token');
+  const token = localStorage.getItem('techdi_token');
   const mediaProxyUrl = msg.mediaId
     ? `${BASE_URL}/api/conversations/media/${msg.mediaId}?token=${encodeURIComponent(token ?? '')}`
     : null;

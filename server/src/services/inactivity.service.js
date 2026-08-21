@@ -8,7 +8,7 @@ const DEFAULT_FAREWELL = 'Hola! Cerramos esta consulta por inactividad. Si neces
 export async function closeInactiveConversations() {
   const db = getDb();
 
-  const configDoc = await db.collection('bot-altorancho_config').doc('bot_config').get();
+  const configDoc = await db.collection('bot-techdi_config').doc('bot_config').get();
   const botConfig = configDoc.exists ? configDoc.data() : {};
   const inactiveHours = botConfig.inactiveCloseHours ?? DEFAULT_INACTIVE_HOURS;
   const farewellMsg = botConfig.inactiveFarewellMessage ?? DEFAULT_FAREWELL;
@@ -17,7 +17,7 @@ export async function closeInactiveConversations() {
   cutoff.setHours(cutoff.getHours() - inactiveHours);
 
   // Bot-only conversations (nunca llegaron a un humano) → se archivan como bot_archived
-  const botSnap = await db.collection('bot-altorancho_conversations')
+  const botSnap = await db.collection('bot-techdi_conversations')
     .where('status', '==', 'bot')
     .where('humanMode', '==', false)
     .get();
@@ -25,7 +25,7 @@ export async function closeInactiveConversations() {
   // Escaladas a un agente pero sin actividad hace rato → antes quedaban
   // abiertas para siempre salvo que alguien las cerrara a mano, inflando
   // "pendientes" en Estadísticas indefinidamente. Se resuelven solas igual.
-  const escalatedSnap = await db.collection('bot-altorancho_conversations')
+  const escalatedSnap = await db.collection('bot-techdi_conversations')
     .where('status', '==', 'escalated')
     .get();
 

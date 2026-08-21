@@ -103,11 +103,11 @@ app.use('/api/notifications',  requireAuth, notificationsRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
-  res.json({ status: 'ok', version: '1.0.0', service: 'bot-altorancho' });
+  res.json({ status: 'ok', version: '1.0.0', service: 'bot-techdi' });
 });
 
 app.listen(PORT, () => {
-  console.log(`[server] BOT-ALTORANCHO corriendo en puerto ${PORT}`);
+  console.log(`[server] BOT-TECHDI corriendo en puerto ${PORT}`);
 });
 
 export default app;

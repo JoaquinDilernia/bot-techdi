@@ -1,6 +1,6 @@
 import { getDb } from './firebase.service.js';
 
-const COLLECTION = 'bot-altorancho_labels';
+const COLLECTION = 'bot-techdi_labels';
 
 export async function getAllLabels() {
   const db = getDb();

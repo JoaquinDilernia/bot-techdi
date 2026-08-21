@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 
-const APP_TITLE = 'Alto Rancho';
+const APP_TITLE = 'TechDI';
 
 export function useNotifications(conversations) {
   const prevRef = useRef(null);
@@ -43,7 +43,7 @@ export function useNotifications(conversations) {
           new Notification(notifTitle, {
             body: conv.lastMessage || 'Nuevo mensaje recibido',
             icon: '/favicon.ico',
-            tag: `altorancho-${conv.id}`,
+            tag: `techdi-${conv.id}`,
           });
         }
         return;
@@ -72,7 +72,7 @@ export function useNotifications(conversations) {
         new Notification(title, {
           body,
           icon: '/favicon.ico',
-          tag: `altorancho-${conv.id}`,
+          tag: `techdi-${conv.id}`,
         });
       }
     });

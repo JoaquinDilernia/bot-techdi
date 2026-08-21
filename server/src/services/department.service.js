@@ -1,6 +1,6 @@
 import { getDb } from './firebase.service.js';
 
-const COLLECTION = 'bot-altorancho_departments';
+const COLLECTION = 'bot-techdi_departments';
 
 const SEED_DEPARTMENTS = [
   {

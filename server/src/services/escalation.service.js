@@ -9,14 +9,14 @@ const FOLLOWUP_FLAG  = 'escalationFollowupSentAt';
 export async function sendEscalationFollowups() {
   const db = getDb();
 
-  const configDoc = await db.collection('bot-altorancho_config').doc('bot_config').get();
+  const configDoc = await db.collection('bot-techdi_config').doc('bot_config').get();
   const botConfig = configDoc.exists ? configDoc.data() : {};
 
   if (!isWithinBusinessHours(botConfig)) return; // solo durante horario laboral
 
   const cutoff = new Date(Date.now() - FOLLOWUP_HOURS * 60 * 60 * 1000);
 
-  const snap = await db.collection('bot-altorancho_conversations')
+  const snap = await db.collection('bot-techdi_conversations')
     .where('humanMode', '==', true)
     .where('status', '==', 'escalated')
     .get();
@@ -40,7 +40,7 @@ export async function sendEscalationFollowups() {
     // redeploy que solapa la instancia vieja con la nueva, o un servidor de
     // desarrollo apuntando por error a la misma base) las dos podían pasar
     // el check y mandar el mensaje duplicado — exactamente lo que pasó.
-    const docRef = db.collection('bot-altorancho_conversations').doc(contactId);
+    const docRef = db.collection('bot-techdi_conversations').doc(contactId);
     const claimed = await db.runTransaction(async (tx) => {
       const fresh = await tx.get(docRef);
       if (fresh.data()?.[FOLLOWUP_FLAG]) return false;

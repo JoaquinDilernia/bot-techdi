@@ -4,7 +4,7 @@ import { sendWhatsAppTemplate } from './meta.service.js';
 import { getOrderById } from './tiendanube.service.js';
 import { getOrCreateConversation, appendMessage, updateMessageStatus, markNotified } from './conversation.service.js';
 
-const FOLLOWUP_COLLECTION = 'bot-altorancho_pickup_followups';
+const FOLLOWUP_COLLECTION = 'bot-techdi_pickup_followups';
 const DAY_MS = 24 * 60 * 60 * 1000;
 // Mismos dos estados que se pueden elegir para el envío inicial (ver
 // STATUS_FILTER_OPTIONS en Notifications.jsx) — si el pedido salió de estos
@@ -14,13 +14,13 @@ const PENDING_PICKUP_STATUSES = ['unpacked', 'unshipped'];
 const TN_BASE = `https://api.tiendanube.com/v1/${process.env.TIENDANUBE_STORE_ID}`;
 const TN_HEADERS = {
   Authentication: `bearer ${process.env.TIENDANUBE_ACCESS_TOKEN}`,
-  'User-Agent': 'BOT-ALTORANCHO/1.0',
+  'User-Agent': 'BOT-TECHDI/1.0',
 };
 
 const PICKUP_FIELDS = 'id,number,status,payment_status,shipping_status,shipping_pickup_type,shipping_option,shipping_pickup_details,customer,total,created_at';
 
 // Branch keywords from the actual TiendaNube shipping option names
-const BRANCH_KEYWORDS = ['SAN ISIDRO', 'BELGRANO', 'ALCORTA', 'NORDELTA', 'ALTORANCHO'];
+const BRANCH_KEYWORDS = ['SAN ISIDRO', 'BELGRANO', 'ALCORTA', 'NORDELTA', 'TECHDI'];
 
 function normalizePhone(raw) {
   if (!raw) return null;
@@ -172,7 +172,7 @@ export async function sendBulkOrders({ orders, templateName, languageCode, param
   const skipped = results.filter(r => r.status === 'skipped').length;
 
   try {
-    await getDb().collection('bot-altorancho_notifications').add({
+    await getDb().collection('bot-techdi_notifications').add({
       sentAt: new Date(),
       sentBy: sentBy ?? 'admin',
       templateName,
@@ -252,7 +252,7 @@ async function sendFollowupTemplate(record, tpl, paramTemplate) {
 export async function sendPickupFollowups() {
   const db = getDb();
 
-  const configDoc = await db.collection('bot-altorancho_config').doc('bot_config').get();
+  const configDoc = await db.collection('bot-techdi_config').doc('bot_config').get();
   const cfg = configDoc.exists ? configDoc.data() : {};
   if (!cfg.pickupFollowupEnabled) return;
 
@@ -260,7 +260,7 @@ export async function sendPickupFollowups() {
   const day7Template = cfg.pickupFollowupDay7Template || null;
   if (!day3Template && !day7Template) return;
 
-  const templatesSnap = await db.collection('bot-altorancho_whatsapp_templates').get();
+  const templatesSnap = await db.collection('bot-techdi_whatsapp_templates').get();
   const templatesByName = new Map(templatesSnap.docs.map(d => [d.data().name, d.data()]));
 
   const snap = await db.collection(FOLLOWUP_COLLECTION).where('active', '==', true).get();
@@ -325,7 +325,7 @@ export async function sendPickupFollowups() {
 
 export async function getNotificationHistory() {
   const db = getDb();
-  const snap = await db.collection('bot-altorancho_notifications')
+  const snap = await db.collection('bot-techdi_notifications')
     .orderBy('sentAt', 'desc')
     .limit(20)
     .get();

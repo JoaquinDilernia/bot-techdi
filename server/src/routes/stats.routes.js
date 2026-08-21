@@ -8,7 +8,7 @@ router.use(requireAuth);
 
 const MAX_CUSTOM_DAYS = 92; // ~3 meses, evita tablas/queries desmedidas
 
-// Alto Rancho opera en Argentina (UTC-3 fijo, sin horario de verano desde 2009).
+// TechDI opera en Argentina (UTC-3 fijo, sin horario de verano desde 2009).
 // Los "días" de las estadísticas (períodos y desglose diario) deben calcularse
 // en ese huso horario SIEMPRE, sin importar en qué TZ corra el proceso Node
 // (en Railway/producción suele ser UTC por default). Si esto se calculara con
@@ -102,13 +102,13 @@ router.get('/', async (req, res) => {
     const endMs = end.getTime();
 
     const [snap, agentsSnap, deptsSnap, urgentSnap] = await Promise.all([
-      db.collection('bot-altorancho_conversations')
+      db.collection('bot-techdi_conversations')
         .where('updatedAt', '>=', startTs)
         .where('updatedAt', '<=', endTs)
         .get(),
-      db.collection('bot-altorancho_agents').get(),
-      db.collection('bot-altorancho_departments').get(),
-      db.collection('bot-altorancho_conversations').where('urgent', '==', true).get(),
+      db.collection('bot-techdi_agents').get(),
+      db.collection('bot-techdi_departments').get(),
+      db.collection('bot-techdi_conversations').where('urgent', '==', true).get(),
     ]);
 
     const conversations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
