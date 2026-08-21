@@ -32,9 +32,6 @@ export async function getOrCreateConversation(contactId, channel, contactName = 
     unread: 0,
     consecutiveClientMessages: 0,
     lastClientMessageAt: null,
-    menuShown: false,
-    pendingMenuTopic: null,
-    pendingLocalStore: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -120,15 +117,6 @@ export async function updateAssignment(contactId, assignedTo) {
     assignedTo: assignedTo ?? null,
     updatedAt: new Date(),
   });
-}
-
-export async function setMenuState(contactId, { menuShown, pendingMenuTopic, pendingLocalStore } = {}) {
-  const db = getDb();
-  const update = { updatedAt: new Date() };
-  if (menuShown !== undefined) update.menuShown = !!menuShown;
-  if (pendingMenuTopic !== undefined) update.pendingMenuTopic = pendingMenuTopic;
-  if (pendingLocalStore !== undefined) update.pendingLocalStore = pendingLocalStore;
-  await db.collection(COLLECTION).doc(contactId).update(update);
 }
 
 export async function setUrgentFlag(contactId, urgent) {
@@ -302,17 +290,6 @@ function tsToMs(ts) {
   if (ts._seconds) return ts._seconds * 1000;
   const d = new Date(ts);
   return isNaN(d) ? 0 : d.getTime();
-}
-
-// Compara dos teléfonos ignorando formato (código de país, ceros a la
-// izquierda, el "9" de móvil argentino): si los últimos 8 dígitos
-// coinciden, se consideran el mismo número.
-function phoneDigitsMatch(a, b) {
-  if (!a || !b) return false;
-  const da = String(a).replace(/\D/g, '');
-  const db_ = String(b).replace(/\D/g, '');
-  if (da.length < 6 || db_.length < 6) return false;
-  return da.slice(-8) === db_.slice(-8);
 }
 
 function matchesText(data, qLower) {

@@ -19,7 +19,7 @@ admin.initializeApp({
 const db = admin.firestore();
 const search = process.argv[2];
 
-const snap = await db.collection('bot-altorancho_conversations').get();
+const snap = await db.collection('bot-techdi_conversations').get();
 const matches = [];
 snap.forEach((doc) => {
   if (doc.id.includes(search)) matches.push(doc);

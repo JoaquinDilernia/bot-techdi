@@ -154,34 +154,10 @@ export default function Simulator() {
                     <span className={styles.profileVal}>{customer.contactName}</span>
                   </div>
                 )}
-                {customer.tnEmail && (
-                  <div className={styles.profileRow}>
-                    <span className={styles.profileKey}>Email</span>
-                    <span className={styles.profileVal}>{customer.tnEmail}</span>
-                  </div>
-                )}
                 <div className={styles.profileRow}>
                   <span className={styles.profileKey}>Canal</span>
                   <span className={styles.profileVal}>{customer.channel}</span>
                 </div>
-                {customer.tnOrders?.length > 0 && (
-                  <div className={styles.orders}>
-                    <div className={styles.ordersTitle}>Compras ({customer.tnOrders.length})</div>
-                    {customer.tnOrders.map(o => (
-                      <div key={o.number} className={styles.orderItem}>
-                        <span className={styles.orderNum}>#{o.number}</span>
-                        <span className={styles.orderStatus}>{o.status}</span>
-                        <span className={styles.orderTotal}>${o.total}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                {!customer.tnOrders?.length && (
-                  <div className={styles.profileRow}>
-                    <span className={styles.profileKey}>Compras</span>
-                    <span className={styles.profileVal}>Sin historial</span>
-                  </div>
-                )}
               </div>
             </div>
           )}

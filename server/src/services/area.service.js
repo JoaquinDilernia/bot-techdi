@@ -1,6 +1,8 @@
 import { getDb } from './firebase.service.js';
+import admin from 'firebase-admin';
 
 const COLLECTION = 'bot-techdi_areas';
+const AGENTS_COLLECTION = 'bot-techdi_agents';
 
 const SEED_AREAS = [
   {
@@ -67,5 +69,16 @@ export async function updateArea(id, { name, description, active }) {
 }
 
 export async function deleteArea(id) {
-  await getDb().collection(COLLECTION).doc(id).delete();
+  const db = getDb();
+  await db.collection(COLLECTION).doc(id).delete();
+
+  // Clean up: strip this area id from every agent's areaIds array.
+  const agentsSnap = await db.collection(AGENTS_COLLECTION).where('areaIds', 'array-contains', id).get();
+  if (!agentsSnap.empty) {
+    const batch = db.batch();
+    for (const doc of agentsSnap.docs) {
+      batch.update(doc.ref, { areaIds: admin.firestore.FieldValue.arrayRemove(id) });
+    }
+    await batch.commit();
+  }
 }

@@ -251,7 +251,7 @@ export default function Templates() {
                 <label className={styles.label}>Texto de la plantilla *</label>
                 <textarea
                   className={styles.textarea}
-                  placeholder="Hola {{1}}, tu pedido {{2}} está listo."
+                  placeholder="Hola {{1}}, tu reunión con {{2}} quedó confirmada."
                   value={bodyText}
                   onChange={e => setBodyText(e.target.value)}
                   rows={4}
@@ -261,7 +261,7 @@ export default function Templates() {
                 <label className={styles.label}>Parámetros (uno por línea)</label>
                 <textarea
                   className={styles.textarea}
-                  placeholder={'nombre del cliente\nnúmero de pedido'}
+                  placeholder={'nombre del cliente\nnombre del asesor'}
                   value={paramsText}
                   onChange={e => setParamsText(e.target.value)}
                   rows={3}

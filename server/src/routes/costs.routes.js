@@ -74,7 +74,7 @@ async function getClaudeCosts(start, end) {
 }
 
 async function getMetaCosts(start, end) {
-  const wabaId = process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID || process.env.META_WABA_ID;
+  const wabaId = process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID;
   const token  = process.env.META_ACCESS_TOKEN;
 
   if (!wabaId || !token) {

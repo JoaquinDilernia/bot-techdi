@@ -125,7 +125,7 @@ router.post('/start', async (req, res) => {
   }
 });
 
-// Búsqueda global: sin límite de 200, sin filtro de departamento, incluye archivadas.
+// Búsqueda global: sin límite de 200, sin filtro de área, incluye archivadas.
 // Debe ir antes de las rutas /:contactId/* para no colisionar con ellas.
 router.get('/search', async (req, res) => {
   try {
@@ -141,7 +141,7 @@ router.get('/search', async (req, res) => {
 });
 
 // Tacho de archivados: todo el historial resolved/bot_archived, sin límite ni
-// restricción de departamento. Debe ir antes de las rutas /:contactId/* para
+// restricción de área. Debe ir antes de las rutas /:contactId/* para
 // no colisionar con ellas.
 router.get('/archived', async (req, res) => {
   try {
@@ -230,7 +230,7 @@ router.patch('/:contactId/assign', async (req, res) => {
   try {
     const { assignedTo } = req.body;
     if (assignedTo !== null && typeof assignedTo !== 'string') {
-      return res.status(400).json({ error: 'assignedTo debe ser un string (email o id de departamento) o null' });
+      return res.status(400).json({ error: 'assignedTo debe ser un string (email o id de área) o null' });
     }
     await updateAssignment(req.params.contactId, assignedTo ?? null);
     res.json({ ok: true, assignedTo: assignedTo ?? null });

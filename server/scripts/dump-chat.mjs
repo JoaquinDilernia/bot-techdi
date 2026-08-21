@@ -19,7 +19,7 @@ admin.initializeApp({
 const db = admin.firestore();
 const contactId = process.argv[2];
 
-const doc = await db.collection('bot-altorancho_conversations').doc(contactId).get();
+const doc = await db.collection('bot-techdi_conversations').doc(contactId).get();
 if (!doc.exists) {
   console.log('No existe');
   process.exit(0);

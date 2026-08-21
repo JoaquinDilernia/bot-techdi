@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import styles from './Users.module.css';
 
 const ROLES = [
-  { value: 'operador', label: 'Operador', desc: 'Ve las conversaciones de su departamento asignado' },
+  { value: 'operador', label: 'Operador', desc: 'Ve las conversaciones de su área asignada' },
   { value: 'atencion_cliente', label: 'Atención al cliente', desc: 'Acceso completo excepto gestión de usuarios' },
   { value: 'admin', label: 'Administrador', desc: 'Acceso total incluida gestión de usuarios' },
 ];
@@ -133,7 +133,7 @@ export default function Users() {
                   type="email"
                   value={form.data.email}
                   onChange={e => setField('email', e.target.value)}
-                  placeholder="usuario@techdi.com"
+                  placeholder="usuario@techdi.com.ar"
                   required
                   disabled={form.mode === 'edit'}
                 />
@@ -201,8 +201,8 @@ export default function Users() {
               </div>
               <p className={styles.hint}>
                 {form.data.role === 'operador'
-                  ? 'El operador verá solo las conversaciones escaladas a este departamento.'
-                  : '"Mis casos" mostrará las conversaciones asignadas a este departamento.'}
+                  ? 'El operador verá solo las conversaciones escaladas a esta área.'
+                  : '"Mis casos" mostrará las conversaciones asignadas a esta área.'}
               </p>
             </div>
 
@@ -224,7 +224,7 @@ export default function Users() {
             <div className={styles.tableHead}>
               <span>Nombre</span>
               <span>Email</span>
-              <span>Rol / Departamento</span>
+              <span>Rol / Área</span>
               <span></span>
             </div>
             {users.map(user => (
@@ -266,11 +266,11 @@ export default function Users() {
           <div className={styles.guideGrid}>
             <div className={styles.guideRow}>
               <span className={`${styles.roleBadge} ${styles.roleOperador}`}>Operador</span>
-              <span className={styles.guideDesc}>Ve todas las conversaciones escaladas a su departamento. Sin estadísticas, configuración ni base de conocimiento.</span>
+              <span className={styles.guideDesc}>Ve todas las conversaciones escaladas a su área. Sin estadísticas, configuración ni base de conocimiento.</span>
             </div>
             <div className={styles.guideRow}>
               <span className={`${styles.roleBadge} ${styles.roleAtencion}`}>Atención al cliente</span>
-              <span className={styles.guideDesc}>Acceso completo al panel: todas las conversaciones, estadísticas, KB, configuración del bot y departamentos. No puede gestionar usuarios.</span>
+              <span className={styles.guideDesc}>Acceso completo al panel: todas las conversaciones, estadísticas, KB, configuración del bot y áreas. No puede gestionar usuarios.</span>
             </div>
             <div className={styles.guideRow}>
               <span className={`${styles.roleBadge} ${styles.roleAdmin}`}>Administrador</span>

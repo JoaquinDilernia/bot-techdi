@@ -334,7 +334,6 @@ export default function Conversations() {
   const [customer, setCustomer] = useState(null);
   const [notes, setNotes] = useState('');
   const [savingNotes, setSavingNotes] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [filter, setFilter] = useState('bot');
   const [labelFilter, setLabelFilter] = useState(null);
   const [search, setSearch] = useState('');
@@ -608,16 +607,6 @@ export default function Conversations() {
     } finally { setSavingNotes(false); }
   }
 
-  async function syncCustomer() {
-    if (!selected || syncing) return;
-    setSyncing(true);
-    try {
-      const res = await authFetch(BASE_URL + `/api/customers/${selected.id}/sync`, { method: 'POST' });
-      const data = await res.json();
-      if (data.customer) { setCustomer(data.customer); setNotes(data.customer.agentNotes ?? ''); }
-    } finally { setSyncing(false); }
-  }
-
   // dispatch supports extra body params (e.g. agentId for take_over)
   async function dispatch(action, extra = {}) {
     if (!selected || updating) return;
@@ -833,8 +822,6 @@ export default function Conversations() {
           if (isConvArchived) return false;
           if (!convHuman) return false;
           if (teamsAreaFilter && c.assignedTo !== teamsAreaFilter) return false;
-        } else if (filter === 'all') {
-          if (isConvArchived) return false;
         }
 
         if (labelFilter && !(c.labels ?? []).includes(labelFilter)) return false;
@@ -1308,9 +1295,6 @@ export default function Conversations() {
         <aside className={styles.profilePanel}>
           <div className={styles.profileHeader}>
             <span className={styles.profileTitle}>Perfil del cliente</span>
-            <button className={styles.syncBtn} onClick={syncCustomer} disabled={syncing} title="Sincronizar con Tienda Nube">
-              {syncing ? '...' : '↻ TN'}
-            </button>
           </div>
 
           {customer ? (
@@ -1328,12 +1312,6 @@ export default function Conversations() {
                     <span className={styles.profileVal}>+{customer.id}</span>
                   </div>
                 )}
-                {customer.tnEmail && (
-                  <div className={styles.profileRow}>
-                    <span className={styles.profileKey}>Email</span>
-                    <span className={styles.profileVal}>{customer.tnEmail}</span>
-                  </div>
-                )}
                 <div className={styles.profileRow}>
                   <span className={styles.profileKey}>Canal</span>
                   <span className={styles.profileVal}>{customer.channel}</span>
@@ -1344,39 +1322,7 @@ export default function Conversations() {
                     <span className={styles.profileVal}>{formatDate(customer.firstContactAt)}</span>
                   </div>
                 )}
-                {customer.tnCustomerId && (
-                  <div className={styles.profileRow}>
-                    <span className={styles.profileKey}>ID Tienda Nube</span>
-                    <span className={styles.profileVal}>#{customer.tnCustomerId}</span>
-                  </div>
-                )}
               </div>
-
-              {customer.tnOrders?.length > 0 ? (
-                <div className={styles.profileSection}>
-                  <div className={styles.profileSectionTitle}>Compras ({customer.tnOrders.length})</div>
-                  {customer.tnOrders.map(o => (
-                    <div key={o.number} className={styles.orderCard}>
-                      <div className={styles.orderTop}>
-                        <span className={styles.orderNum}>Pedido #{o.number}</span>
-                        <span className={styles.orderTotal}>${o.total}</span>
-                      </div>
-                      <div className={styles.orderMeta}>
-                        <span>{o.date ?? '?'}</span>
-                        <span className={styles.orderStatus}>{o.status}</span>
-                      </div>
-                      {o.products?.length > 0 && (
-                        <div className={styles.orderProducts}>{o.products.join(', ')}</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className={styles.profileSection}>
-                  <div className={styles.profileSectionTitle}>Compras</div>
-                  <p className={styles.profileEmpty}>Sin historial en Tienda Nube</p>
-                </div>
-              )}
 
               <div className={styles.profileSection}>
                 <div className={styles.summaryHeader}>

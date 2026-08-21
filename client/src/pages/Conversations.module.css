@@ -586,20 +586,6 @@
   letter-spacing: 0.5px;
 }
 
-.syncBtn {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-primary-dark);
-  background: var(--color-primary-subtle);
-  border: 1px solid var(--color-primary-light);
-  border-radius: var(--radius-sm);
-  padding: 2px 8px;
-  cursor: pointer;
-  transition: all var(--transition-fast);
-}
-.syncBtn:hover:not(:disabled) { background: var(--color-primary-bg); }
-.syncBtn:disabled { opacity: 0.5; cursor: not-allowed; }
-
 .profileSection {
   padding: var(--space-4);
   border-bottom: 1px solid var(--color-border);
@@ -642,54 +628,6 @@
   color: var(--color-text-muted);
   padding: var(--space-4);
   text-align: center;
-}
-
-/* Order cards */
-.orderCard {
-  background: var(--color-surface-alt);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.orderTop {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.orderNum {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--color-primary-dark);
-}
-
-.orderTotal {
-  font-size: var(--font-size-xs);
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-.orderMeta {
-  display: flex;
-  justify-content: space-between;
-  font-size: 10px;
-  color: var(--color-text-muted);
-}
-
-.orderStatus {
-  font-weight: 500;
-}
-
-.orderProducts {
-  font-size: 10px;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 /* Notes */

@@ -72,9 +72,7 @@ app.use('/api/labels', requireAuth, labelRoutes);
 
 // Requires at least atencion_cliente
 app.use('/api/knowledge',     requireAuth, requireAtLeastAtencionCliente, knowledgeRoutes);
-// Los operadores necesitan leer la config (ej: seguimiento de retiro en
-// Notificaciones) — la restricción de escritura vive dentro del router.
-app.use('/api/config',        requireAuth, configRoutes);
+app.use('/api/config',        requireAuth, requireAtLeastAtencionCliente, configRoutes);
 // Un operador que atiende una conversación derivada necesita ver el perfil
 // del cliente (contacto, notas) y poder actualizarlo — no es una acción de
 // administración global como el resto de este bloque.
@@ -82,7 +80,8 @@ app.use('/api/customers',     requireAuth, customerRoutes);
 app.use('/api/test',          requireAuth, requireAtLeastAtencionCliente, testRoutes);
 app.use('/api/stats',         requireAuth, requireAtLeastAtencionCliente, statsRoutes);
 app.use('/api/quick-replies', requireAuth, requireAtLeastAtencionCliente, quickReplyRoutes);
-// Los operadores necesitan leer templates para usar Notificaciones — la
+// Los operadores necesitan leer templates: Conversations.jsx los usa para el
+// modal de "nueva conversación" (disponible para cualquier rol) — la
 // restricción de escritura (crear/sincronizar/borrar) vive dentro del router.
 app.use('/api/templates',     requireAuth, templateRoutes);
 app.use('/api/costs',         requireAuth, requireAtLeastAtencionCliente, costsRoutes);
