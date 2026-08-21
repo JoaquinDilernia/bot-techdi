@@ -306,8 +306,8 @@ export async function getStoreInfo() {
  */
 // Pedidos con retiro en local: TiendaNube no tiene un campo booleano directo
 // para esto, se identifica por shipping_pickup_type o por el nombre de la
-// opción de envío (los retiros usan "TECHDI {sucursal}").
-const PICKUP_BRANCH_KEYWORDS = ['SAN ISIDRO', 'BELGRANO', 'NORDELTA', 'TECHDI'];
+// opción de envío (los retiros usan "ALTORANCHO {sucursal}").
+const PICKUP_BRANCH_KEYWORDS = ['SAN ISIDRO', 'BELGRANO', 'NORDELTA', 'ALTORANCHO'];
 
 function isPickupOrder(order) {
   if (order.shipping_pickup_type === 'pickup' || order.shipping_pickup_type === 'ship_to_store') return true;

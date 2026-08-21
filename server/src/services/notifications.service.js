@@ -20,7 +20,7 @@ const TN_HEADERS = {
 const PICKUP_FIELDS = 'id,number,status,payment_status,shipping_status,shipping_pickup_type,shipping_option,shipping_pickup_details,customer,total,created_at';
 
 // Branch keywords from the actual TiendaNube shipping option names
-const BRANCH_KEYWORDS = ['SAN ISIDRO', 'BELGRANO', 'ALCORTA', 'NORDELTA', 'TECHDI'];
+const BRANCH_KEYWORDS = ['SAN ISIDRO', 'BELGRANO', 'ALCORTA', 'NORDELTA', 'ALTORANCHO'];
 
 function normalizePhone(raw) {
   if (!raw) return null;

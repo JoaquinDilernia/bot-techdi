@@ -28,7 +28,7 @@ export default function Login() {
   return (
     <div className={styles.page}>
       <div className={styles.card}>
-        <div className={styles.logo}>A</div>
+        <div className={styles.logo}>T</div>
         <h1 className={styles.title}>TechDI</h1>
         <p className={styles.subtitle}>Panel de administración</p>
         <form className={styles.form} onSubmit={handleSubmit}>
