@@ -18,7 +18,7 @@ function toPublic(data) {
     email: data.email,
     name: data.name,
     role: data.role ?? 'operador',
-    department: data.department ?? null,
+    areaIds: data.areaIds ?? [],
   };
 }
 
@@ -37,7 +37,6 @@ export async function seedAgentsIfNeeded() {
         email: admin.email,
         name: admin.name,
         role: 'admin',
-        department: 'admin',
         passwordHash: hashPassword(admin.password),
         createdAt: new Date(),
       });
@@ -46,7 +45,6 @@ export async function seedAgentsIfNeeded() {
       const data = doc.data();
       const updates = {};
       if (data.role !== 'admin') updates.role = 'admin';
-      if (!data.department) updates.department = 'admin';
       if (Object.keys(updates).length > 0) {
         await db.collection(COLLECTION).doc(id).update(updates);
         console.log('[auth] Admin actualizado:', admin.email, updates);
@@ -72,12 +70,12 @@ export async function validateCredentials(email, password) {
   return toPublic(data);
 }
 
-export async function createUser({ email, name, password, role = 'operador', department = null }) {
+export async function createUser({ email, name, password, role = 'operador', areaIds = [] }) {
   const db = getDb();
   const id = docId(email);
   const existing = await db.collection(COLLECTION).doc(id).get();
   if (existing.exists) throw new Error('El email ya está registrado');
-  const user = { id, email: email.toLowerCase().trim(), name, role, department, passwordHash: hashPassword(password), createdAt: new Date() };
+  const user = { id, email: email.toLowerCase().trim(), name, role, areaIds, passwordHash: hashPassword(password), createdAt: new Date() };
   await db.collection(COLLECTION).doc(id).set(user);
   return toPublic(user);
 }
@@ -93,12 +91,12 @@ export async function deleteUser(id) {
   await db.collection(COLLECTION).doc(docId(id)).delete();
 }
 
-export async function updateUser(id, { name, role, department } = {}) {
+export async function updateUser(id, { name, role, areaIds } = {}) {
   const db = getDb();
   const update = { updatedAt: new Date() };
   if (name) update.name = name;
   if (role) update.role = role;
-  if (department !== undefined) update.department = department;
+  if (areaIds !== undefined) update.areaIds = areaIds;
   await db.collection(COLLECTION).doc(docId(id)).update(update);
   const doc = await db.collection(COLLECTION).doc(docId(id)).get();
   return toPublic(doc.data());
@@ -123,7 +121,7 @@ export async function updateProfile(agentId, { name, password } = {}) {
 
 export function generateToken(agent) {
   return jwt.sign(
-    { id: agent.id, email: agent.email, name: agent.name, role: agent.role, department: agent.department ?? null },
+    { id: agent.id, email: agent.email, name: agent.name, role: agent.role, areaIds: agent.areaIds ?? [] },
     process.env.JWT_SECRET,
     { expiresIn: '7d' }
   );

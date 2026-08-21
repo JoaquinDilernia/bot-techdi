@@ -58,9 +58,9 @@ router.get('/media/:mediaId', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const { channel, status, assignedTo } = req.query;
-    // operador sees conversations assigned to their department (bot escalation) OR directly to their email
+    // operador sees conversations assigned to one of their areas (bot escalation) OR directly to their email
     const assignedToFilter = req.agent.role === 'operador'
-      ? [req.agent.department, req.agent.email].filter(Boolean)
+      ? [...(req.agent.areaIds ?? []), req.agent.email].filter(Boolean)
       : (assignedTo ?? undefined);
     const conversations = await listConversations({ channel, status, assignedTo: assignedToFilter });
     res.json({ conversations });
@@ -198,11 +198,11 @@ router.patch('/:contactId/dispatch', async (req, res) => {
       return res.json({ ok: true, ...patch });
     }
 
-    // assign_dept: escalate to a department (or agent email)
-    if (action === 'assign_dept') {
-      const { deptId } = req.body;
-      if (!deptId) return res.status(400).json({ error: 'deptId requerido' });
-      const patch = { status: 'escalated', humanMode: true, assignedTo: deptId };
+    // assign_to: escalate to a specific agent's email, or to an area id
+    if (action === 'assign_to') {
+      const { assignedTo: target } = req.body;
+      if (!target) return res.status(400).json({ error: 'assignedTo requerido' });
+      const patch = { status: 'escalated', humanMode: true, assignedTo: target };
       await dispatchConversation(req.params.contactId, patch);
       return res.json({ ok: true, ...patch });
     }

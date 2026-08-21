@@ -85,10 +85,11 @@ function isInRange(ts, startMs, endMs) {
   return !!d && d.getTime() >= startMs && d.getTime() <= endMs;
 }
 
-function resolveDeptForAssignee(assignee, deptIds, agentsByEmail) {
-  if (deptIds.has(assignee)) return assignee;
+function resolveAreaForAssignee(assignee, areaIds, agentsByEmail) {
+  if (!assignee) return null;
+  if (areaIds.has(assignee)) return assignee;
   const agent = agentsByEmail.get(assignee);
-  return agent?.department && deptIds.has(agent.department) ? agent.department : null;
+  return (agent?.areaIds ?? []).find(id => areaIds.has(id)) ?? null;
 }
 
 router.get('/', async (req, res) => {
@@ -101,20 +102,20 @@ router.get('/', async (req, res) => {
     const startMs = start.getTime();
     const endMs = end.getTime();
 
-    const [snap, agentsSnap, deptsSnap, urgentSnap] = await Promise.all([
+    const [snap, agentsSnap, areasSnap, urgentSnap] = await Promise.all([
       db.collection('bot-techdi_conversations')
         .where('updatedAt', '>=', startTs)
         .where('updatedAt', '<=', endTs)
         .get(),
       db.collection('bot-techdi_agents').get(),
-      db.collection('bot-techdi_departments').get(),
+      db.collection('bot-techdi_areas').get(),
       db.collection('bot-techdi_conversations').where('urgent', '==', true).get(),
     ]);
 
     const conversations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     const agents = agentsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const departments = deptsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-    const deptIds = new Set(departments.map(d => d.id));
+    const areas = areasSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    const areaIds = new Set(areas.map(a => a.id));
     const agentsByEmail = new Map(agents.map(a => [a.email, a]));
 
     // Urgentes: siempre "ahora mismo", sin acotar por período (igual criterio
@@ -127,10 +128,10 @@ router.get('/', async (req, res) => {
     // --- Buckets ---
     const agentBuckets = { bot: { handled: 0, resolved: 0 } };
     for (const a of agents) agentBuckets[a.email] = { handled: 0, resolved: 0 };
-    for (const dep of departments) agentBuckets[dep.id] = { handled: 0, resolved: 0 };
+    for (const area of areas) agentBuckets[area.id] = { handled: 0, resolved: 0 };
 
-    const deptBuckets = {};
-    for (const dep of departments) deptBuckets[dep.id] = { name: dep.name, handled: 0, resolved: 0, avgFirstResponseMin: null, _responseSamples: [] };
+    const areaBuckets = {};
+    for (const area of areas) areaBuckets[area.id] = { name: area.name, handled: 0, resolved: 0, avgFirstResponseMin: null, _responseSamples: [] };
 
     const byStatus  = { bot: 0, escalated: 0, resolved: 0, bot_archived: 0 };
     const byChannel = { whatsapp: 0, instagram: 0 };
@@ -163,12 +164,12 @@ router.get('/', async (req, res) => {
       bucket.handled++;
       if (status === 'resolved' || status === 'bot_archived') bucket.resolved++;
 
-      // Department breakdown — resolver el depto real aunque el asignado
+      // Area breakdown — resolver el área real aunque el asignado
       // actual sea un agente puntual que tomó un caso derivado (take_over)
-      const resolvedDept = resolveDeptForAssignee(assignee, deptIds, agentsByEmail);
-      if (resolvedDept && deptBuckets[resolvedDept]) {
-        deptBuckets[resolvedDept].handled++;
-        if (status === 'resolved' || status === 'bot_archived') deptBuckets[resolvedDept].resolved++;
+      const resolvedArea = resolveAreaForAssignee(assignee, areaIds, agentsByEmail);
+      if (resolvedArea && areaBuckets[resolvedArea]) {
+        areaBuckets[resolvedArea].handled++;
+        if (status === 'resolved' || status === 'bot_archived') areaBuckets[resolvedArea].resolved++;
       }
 
       // Escalación: sólo las ocurridas dentro del rango
@@ -180,7 +181,7 @@ router.get('/', async (req, res) => {
         const respMin = diffMin(conv.escalatedAt, conv.firstAgentResponseAt);
         if (respMin !== null && respMin >= 0 && respMin < 24 * 60) {
           firstResponseSamples.push(respMin);
-          if (resolvedDept) deptBuckets[resolvedDept]._responseSamples.push(respMin);
+          if (resolvedArea) areaBuckets[resolvedArea]._responseSamples.push(respMin);
         }
       }
 
@@ -250,9 +251,9 @@ router.get('/', async (req, res) => {
       .sort((a, b) => b.count - a.count)
       .slice(0, 8);
 
-    // Las conversaciones derivadas a un departamento (sin asignar todavía a
-    // una persona puntual) ya se cuentan en "Por departamento" — antes acá
-    // se agregaba una fila extra "{depto} (depto.)" con el mismo número,
+    // Las conversaciones derivadas a un área (sin asignar todavía a
+    // una persona puntual) ya se cuentan en "Por área" — antes acá
+    // se agregaba una fila extra "{área} (área.)" con el mismo número,
     // que se veía como un agente fantasma duplicado.
     const byAgent = [
       { id: 'bot', name: 'Bot (Asistente)', ...agentBuckets['bot'] },
@@ -263,15 +264,15 @@ router.get('/', async (req, res) => {
       })),
     ];
 
-    const byDepartment = departments
-      .map(dep => ({
-        id: dep.id,
-        name: dep.name,
-        handled: deptBuckets[dep.id]?.handled ?? 0,
-        resolved: deptBuckets[dep.id]?.resolved ?? 0,
-        avgFirstResponseMin: avg(deptBuckets[dep.id]?._responseSamples ?? []),
+    const byArea = areas
+      .map(area => ({
+        id: area.id,
+        name: area.name,
+        handled: areaBuckets[area.id]?.handled ?? 0,
+        resolved: areaBuckets[area.id]?.resolved ?? 0,
+        avgFirstResponseMin: avg(areaBuckets[area.id]?._responseSamples ?? []),
       }))
-      .filter(d => d.handled > 0)
+      .filter(a => a.handled > 0)
       .sort((a, b) => b.handled - a.handled);
 
     res.json({
@@ -293,7 +294,7 @@ router.get('/', async (req, res) => {
       byStatus,
       byChannel,
       byAgent,
-      byDepartment,
+      byArea,
       labelCounts,
       dailyTrend,
     });
