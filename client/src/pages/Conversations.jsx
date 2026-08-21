@@ -836,12 +836,6 @@ export default function Conversations() {
           if (teamsAreaFilter && c.assignedTo !== teamsAreaFilter) return false;
         } else if (filter === 'all') {
           if (isConvArchived) return false;
-        } else if (filter === 'notifications') {
-          if (isConvArchived) return false;
-          if (!c.notifiedAt) return false;
-          const notifiedAt = tsToDate(c.notifiedAt);
-          const lastClientMsg = tsToDate(c.lastClientMessageAt);
-          if (notifiedAt && lastClientMsg && lastClientMsg >= notifiedAt) return false;
         }
 
         if (labelFilter && !(c.labels ?? []).includes(labelFilter)) return false;
