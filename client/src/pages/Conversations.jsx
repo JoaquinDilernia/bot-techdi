@@ -361,10 +361,10 @@ export default function Conversations() {
   const [newConvError, setNewConvError] = useState('');
   const [summary, setSummary] = useState(null);
   const [summaryGenerating, setSummaryGenerating] = useState(false);
-  const [departments, setDepartments] = useState([]);
+  const [areas, setAreas] = useState([]);
   const [agentsList, setAgentsList] = useState([]);
   const [nameMap, setNameMap] = useState({});
-  const [teamsDeptFilter, setTeamsDeptFilter] = useState('');
+  const [teamsAreaFilter, setTeamsAreaFilter] = useState('');
   const [apiWindowError, setApiWindowError] = useState(false);
   const [templateSendOpen, setTemplateSendOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
@@ -389,16 +389,16 @@ export default function Conversations() {
     loadConversations();
     loadAllLabels();
     loadQuickReplies();
-    // Load departments + agents for name resolution
+    // Load areas + agents for name resolution
     Promise.all([
-      authFetch(BASE_URL + '/api/departments').then(r => r.ok ? r.json() : { departments: [] }),
+      authFetch(BASE_URL + '/api/areas').then(r => r.ok ? r.json() : { areas: [] }),
       authFetch(BASE_URL + '/api/auth/users').then(r => r.ok ? r.json() : []),
-    ]).then(([deptsData, agents]) => {
-      const depts = deptsData.departments ?? [];
-      setDepartments(depts);
+    ]).then(([areasData, agents]) => {
+      const loadedAreas = areasData.areas ?? [];
+      setAreas(loadedAreas);
       setAgentsList(agents.filter(a => a.role !== 'admin'));
       const map = {};
-      for (const d of depts) map[d.id] = d.name;
+      for (const a of loadedAreas) map[a.id] = a.name;
       for (const a of agents) { map[a.email] = a.name; map[a.id] = a.name; }
       setNameMap(map);
     });
@@ -818,8 +818,8 @@ export default function Conversations() {
           if (status !== 'bot') return false;
         } else if (filter === 'mine') {
           if (isConvArchived) return false;
-          const myDept = agent?.department;
-          if (!convHuman || (c.assignedTo !== myId && (!myDept || c.assignedTo !== myDept))) return false;
+          const myAreaIds = agent?.areaIds ?? [];
+          if (!convHuman || (c.assignedTo !== myId && !myAreaIds.includes(c.assignedTo))) return false;
         } else if (filter === 'critical') {
           if (isConvArchived) return false;
           if (!c.critical) return false;
@@ -833,7 +833,7 @@ export default function Conversations() {
         } else if (filter === 'teams') {
           if (isConvArchived) return false;
           if (!convHuman) return false;
-          if (teamsDeptFilter && c.assignedTo !== teamsDeptFilter) return false;
+          if (teamsAreaFilter && c.assignedTo !== teamsAreaFilter) return false;
         } else if (filter === 'all') {
           if (isConvArchived) return false;
         } else if (filter === 'notifications') {
@@ -877,22 +877,22 @@ export default function Conversations() {
             }).map(f => (
               <button
                 key={f.value}
-                onClick={() => { setFilter(f.value); if (f.value !== 'teams') setTeamsDeptFilter(''); }}
+                onClick={() => { setFilter(f.value); if (f.value !== 'teams') setTeamsAreaFilter(''); }}
                 className={`${styles.filterChip} ${filter === f.value ? styles.filterChipActive : ''}`}
               >
                 {f.label}
               </button>
             ))}
           </div>
-          {filter === 'teams' && departments.length > 0 && (
+          {filter === 'teams' && areas.length > 0 && (
             <select
               className={styles.labelSelect}
-              value={teamsDeptFilter}
-              onChange={e => setTeamsDeptFilter(e.target.value)}
+              value={teamsAreaFilter}
+              onChange={e => setTeamsAreaFilter(e.target.value)}
             >
-              <option value="">Todos los departamentos</option>
-              {departments.map(d => (
-                <option key={d.id} value={d.id}>{d.name}</option>
+              <option value="">Todas las áreas</option>
+              {areas.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
               ))}
             </select>
           )}
@@ -1003,7 +1003,7 @@ export default function Conversations() {
                       <select
                         className={styles.agentSelect}
                         value=""
-                        onChange={e => { if (e.target.value) dispatch('assign_dept', { deptId: e.target.value }); }}
+                        onChange={e => { if (e.target.value) dispatch('assign_to', { assignedTo: e.target.value }); }}
                         disabled={updating}
                         title="Derivar a agente específico"
                       >

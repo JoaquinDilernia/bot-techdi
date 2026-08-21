@@ -19,7 +19,7 @@ const STATUS_META = {
 const AGENT_COLORS = ['var(--color-primary)', '#8b5cf6', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444'];
 const DEPT_COLORS  = ['#0ea5e9', '#8b5cf6', '#f59e0b', '#10b981', '#ef4444', '#ec4899'];
 function agentColor(idx) { return AGENT_COLORS[idx % AGENT_COLORS.length]; }
-function deptColor(idx)  { return DEPT_COLORS[idx % DEPT_COLORS.length]; }
+function areaColor(idx)  { return DEPT_COLORS[idx % DEPT_COLORS.length]; }
 
 const CHANNEL_META = {
   whatsapp:  { label: 'WhatsApp',  color: '#25d366' },
@@ -277,14 +277,14 @@ export default function Stats() {
             </section>
           </div>
 
-          {/* By department + by channel */}
+          {/* By area + by channel */}
           <div className={styles.grid2}>
-            {data.byDepartment?.length > 0 ? (
+            {data.byArea?.length > 0 ? (
               <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Por departamento</h2>
+                <h2 className={styles.sectionTitle}>Por área</h2>
                 <div className={styles.agentRows}>
-                  {data.byDepartment.map((d, idx) => {
-                    const color = deptColor(idx);
+                  {data.byArea.map((d, idx) => {
+                    const color = areaColor(idx);
                     return (
                       <div key={d.id} className={styles.agentRow}>
                         <div className={styles.agentLeft}>
@@ -308,7 +308,7 @@ export default function Stats() {
               </section>
             ) : (
               <section className={styles.section}>
-                <h2 className={styles.sectionTitle}>Por departamento</h2>
+                <h2 className={styles.sectionTitle}>Por área</h2>
                 <p className={styles.empty}>Sin derivaciones en el período</p>
               </section>
             )}

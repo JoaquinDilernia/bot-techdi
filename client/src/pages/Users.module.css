@@ -405,3 +405,15 @@
   .tableRow { grid-template-columns: 1fr auto; gap: var(--space-2); }
   .userEmail { display: none; }
 }
+
+.checkboxGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.checkboxItem {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}

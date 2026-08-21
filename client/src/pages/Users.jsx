@@ -12,12 +12,12 @@ const ROLES = [
 const ROLE_LABEL = { admin: 'Admin', atencion_cliente: 'Atención al cliente', operador: 'Operador' };
 const ROLE_COLOR = { admin: styles.roleAdmin, atencion_cliente: styles.roleAtencion, operador: styles.roleOperador };
 
-const DEFAULT_FORM = { name: '', email: '', password: '', role: 'operador', department: '' };
+const DEFAULT_FORM = { name: '', email: '', password: '', role: 'operador', areaIds: [] };
 
 export default function Users() {
   const { agent: me } = useAuth();
   const [users, setUsers]           = useState([]);
-  const [departments, setDepts]     = useState([]);
+  const [areas, setAreas]           = useState([]);
   const [loading, setLoading]       = useState(true);
   const [form, setForm]             = useState(null);
   const [saving, setSaving]         = useState(false);
@@ -26,12 +26,12 @@ export default function Users() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [usersRes, deptsRes] = await Promise.all([
+      const [usersRes, areasRes] = await Promise.all([
         authFetch(BASE_URL + '/api/auth/users'),
-        authFetch(BASE_URL + '/api/departments'),
+        authFetch(BASE_URL + '/api/areas'),
       ]);
       if (usersRes.ok) setUsers(await usersRes.json());
-      if (deptsRes.ok) setDepts((await deptsRes.json()).departments ?? []);
+      if (areasRes.ok) setAreas((await areasRes.json()).areas ?? []);
     } finally {
       setLoading(false);
     }
@@ -45,7 +45,7 @@ export default function Users() {
   }
 
   function openEdit(user) {
-    setForm({ mode: 'edit', data: { id: user.id, name: user.name, email: user.email, role: user.role, department: user.department ?? '', password: '' } });
+    setForm({ mode: 'edit', data: { id: user.id, name: user.name, email: user.email, role: user.role, areaIds: user.areaIds ?? [], password: '' } });
     setError('');
   }
 
@@ -60,21 +60,20 @@ export default function Users() {
     setSaving(true);
     setError('');
     try {
-      const { name, email, password, role, department } = form.data;
-      const deptValue = department || null;
+      const { name, email, password, role, areaIds } = form.data;
 
       if (form.mode === 'create') {
         if (!name || !email || !password) throw new Error('Nombre, email y contraseña son requeridos');
         const res = await authFetch(BASE_URL + '/api/auth/users', {
           method: 'POST',
-          body: { name, email, password, role, department: deptValue },
+          body: { name, email, password, role, areaIds },
         });
         if (!res.ok) throw new Error((await res.json()).error);
       } else {
         const { id } = form.data;
         const res = await authFetch(BASE_URL + `/api/auth/users/${id}`, {
           method: 'PUT',
-          body: { name, role, department: deptValue },
+          body: { name, role, areaIds },
         });
         if (!res.ok) throw new Error((await res.json()).error);
       }
@@ -93,7 +92,7 @@ export default function Users() {
     setUsers(prev => prev.filter(u => u.id !== user.id));
   }
 
-  const deptName = id => departments.find(d => d.id === id)?.name ?? id;
+  const areaName = id => areas.find(a => a.id === id)?.name ?? id;
 
   return (
     <div className={styles.page}>
@@ -181,17 +180,25 @@ export default function Users() {
             </div>
 
             <div className={styles.field}>
-              <label className={styles.label}>Departamento asignado</label>
-              <select
-                className={styles.input}
-                value={form.data.department}
-                onChange={e => setField('department', e.target.value)}
-              >
-                <option value="">— Sin departamento —</option>
-                {departments.map(d => (
-                  <option key={d.id} value={d.id}>{d.name}</option>
+              <label className={styles.label}>Áreas asignadas</label>
+              <div className={styles.checkboxGroup}>
+                {areas.map(a => (
+                  <label key={a.id} className={styles.checkboxItem}>
+                    <input
+                      type="checkbox"
+                      checked={form.data.areaIds.includes(a.id)}
+                      onChange={e => {
+                        const next = e.target.checked
+                          ? [...form.data.areaIds, a.id]
+                          : form.data.areaIds.filter(id => id !== a.id);
+                        setField('areaIds', next);
+                      }}
+                    />
+                    {a.name}
+                  </label>
                 ))}
-              </select>
+                {areas.length === 0 && <p className={styles.hint}>No hay áreas configuradas todavía.</p>}
+              </div>
               <p className={styles.hint}>
                 {form.data.role === 'operador'
                   ? 'El operador verá solo las conversaciones escaladas a este departamento.'
@@ -234,9 +241,9 @@ export default function Users() {
                   <span className={`${styles.roleBadge} ${ROLE_COLOR[user.role] ?? ''}`}>
                     {ROLE_LABEL[user.role] ?? user.role}
                   </span>
-                  {user.department && (
-                    <span className={styles.deptTag}>{deptName(user.department)}</span>
-                  )}
+                  {(user.areaIds ?? []).map(id => (
+                    <span key={id} className={styles.deptTag}>{areaName(id)}</span>
+                  ))}
                 </div>
                 <div className={styles.rowActions}>
                   <button className={styles.actionBtn} onClick={() => openEdit(user)}>Editar</button>
