@@ -23,7 +23,7 @@ function toPublic(data) {
 }
 
 const ADMIN_SEEDS = [
-  { email: 'joaquin.dilernia@techdi.com', name: 'Joaquín Di Lernia', password: 'altolett123' },
+  { email: 'joaquin@techdi.com.ar', name: 'Joaquín Di Lernia', password: 'joaquin123' },
 ];
 
 export async function seedAgentsIfNeeded() {
