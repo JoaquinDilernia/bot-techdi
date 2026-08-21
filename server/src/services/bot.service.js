@@ -1,5 +1,5 @@
 import { generateBotResponse } from './claude.service.js';
-import { getKnowledgeBasePrompt, getKnowledgeItemByTitle } from './knowledge.service.js';
+import { getKnowledgeBasePrompt } from './knowledge.service.js';
 import {
   getOrCreateConversation,
   appendMessage,
@@ -10,147 +10,17 @@ import {
   dispatchConversation,
   setUrgentFlag,
   addLabelToConversation,
-  setMenuState,
 } from './conversation.service.js';
-// NOTE: Commented out in Task 4 (tiendanube.service.js and odoo.service.js deleted)
-// These will be re-imported/rewritten in Task 5
-// import { findOrder, findOrdersByEmail, getOrderById as getTNOrderById, formatOrderStatus, searchProducts } from './tiendanube.service.js';
-// import { findOdooOrder, findOdooOrdersByContact, findOdooOrdersByName, formatOdooOrder, getStockBySku, formatStockInfo, findPosOrder, findPosOrdersByContact, formatPosOrder, LOCAL_STORES } from './odoo.service.js';
-import { sendWhatsAppMessage, sendInstagramMessage, downloadMediaAsBase64, sendWhatsAppInteractiveList, sendWhatsAppInteractiveButtons } from './meta.service.js';
-import {
-  getOrCreateCustomer,
-  // enrichCustomerFromTiendaNube, // Removed in Task 4
-  buildCustomerContext,
-  // linkCustomerFromOrder, // Removed in Task 4
-} from './customer.service.js';
+import { sendWhatsAppMessage, sendInstagramMessage, downloadMediaAsBase64 } from './meta.service.js';
+import { getOrCreateCustomer, buildCustomerContext } from './customer.service.js';
 import { getAllLabels, createLabel } from './label.service.js';
-import { getActiveDepartments } from './department.service.js';
+import { getActiveAreas } from './area.service.js';
 import { getDb } from './firebase.service.js';
 
-// NOTE: LOCAL_STORES was imported from odoo.service.js (deleted in Task 4)
-// This is a placeholder to prevent crashes — will be rewritten in Task 5
-const LOCAL_STORES = [];
-
-// Captura números Odoo (S08121), TiendaNube (TN1999675391) y números puros.
-// El número puede venir con o sin "#" y en cualquier parte del mensaje — NO
-// hace falta que esté pegado a la palabra clave (ej: "mi pedido es el 20610"
-// o "el número de pedido es #20610" tienen que encontrar el 20610 igual que
-// "pedido #20610").
-const ORDER_REF = '[A-Z]{0,2}\\d{3,}';
-const ORDER_REF_TOKEN = new RegExp(`#?(${ORDER_REF})\\b`, 'i');
-const ORDER_BARE_NUMBER = new RegExp(`^#?(${ORDER_REF})$`, 'i');
-const ORDER_KEYWORD = /\b(pedido|orden|compra|n[uú]mero)\b/i;
-// Menciones de una compra sin número (frecuente en compras de local físico,
-// que el cliente no suele identificar con un número de pedido) — van directo
-// al flujo de "sin número" sin necesidad de encontrar un token de dígitos.
-const ORDER_INTENT_NO_NUMBER_PATTERNS = [
-  /tracking/i,
-  /donde\s*(está|esta)\s*(mi|el)\s*pedido/i,
-  /estado\s*(de|del)\s*(mi|el)?\s*pedido/i,
-  /cuándo\s*(llega|llega)/i,
-  /mi\s+compra\b/i,
-  /compr[eé]\s+(?:algo|un|una|el|la)\b/i,
-];
-
-const STOCK_PATTERNS = [
-  /\bstock\b/i,
-  /\bdisponib/i,
-  /\bexhibici/i,
-  /tienen\s+(?:el|la|los|las)\s+\w/i,
-  /hay\s+(?:algún|alguna|algun|alguna)\b/i,
-  /en\s+(?:el\s+)?local/i,
-  /en\s+belgrano/i,
-  /en\s+(?:las?\s*)?lomas/i,
-  /en\s+alcorta/i,
-  /en\s+rol[oó]n/i,
-  /en\s+sucursal/i,
-  /en\s+(?:la\s+)?tienda/i,
-];
-
-// SKU propio: letras + dígitos + letras (ej: IME054CH, DOF126RS). El dígito en
-// el medio lo distingue de una palabra común, así que alcanza como señal de
-// intención aunque el mensaje no traiga ninguna palabra clave de stock — pasa
-// seguido cuando el bot ya preguntó "¿qué producto?" y el cliente responde
-// solo con el SKU.
-const SKU_PATTERN = /\b[A-Z]{2,5}\d{2,5}[A-Z]{1,5}\b/i;
-
-// Solo Atención al Cliente está atendiendo activamente por ahora — el resto
-// de los equipos (Logística, Facturación, Mayorista, depósitos) no están
-// revisando su cola, así que toda derivación (automática o por menú) se
-// fuerza a 'atencion' para que ningún cliente quede esperando en el vacío.
-// Sacar este flag cuando los demás equipos vuelvan a estar operativos.
-const FORCE_ESCALATE_TO_ATENCION = true;
-
-// --- Flujo guiado por menú (bot_config.flowMode === 'menu') ---
-const ENTRY_MENU_BODY = '¡Hola! 👋 Elegí una opción para que te pueda ayudar más rápido:';
-const ENTRY_MENU_BUTTON_TEXT = 'Ver opciones';
-const ENTRY_MENU_SECTIONS = [
-  {
-    title: 'TechDI',
-    rows: [
-      { id: 'menu_order_status', title: 'Estado de pedido', description: 'Consultar en qué está tu pedido' },
-      { id: 'menu_order_change', title: 'Cambios y devoluciones', description: 'Cambiar o devolver un producto' },
-      { id: 'menu_stock', title: 'Stock y productos', description: 'Consultar disponibilidad' },
-      { id: 'menu_horarios', title: 'Horarios locales', description: 'Días y horarios de atención' },
-      { id: 'menu_talk_to_agent', title: 'Hablar con alguien', description: 'Te derivamos con el equipo' },
-    ],
-  },
-];
-const WEB_LOCAL_PROMPT = '¿Fue una compra por la web o en uno de nuestros locales?';
-const WEB_LOCAL_BUTTONS = [
-  { id: 'web', title: 'Por la web' },
-  { id: 'local', title: 'En un local' },
-];
-// Las compras de local son pos.order en Odoo (no sale.order) y su referencia
-// depende del local exacto (ej: "Belgrano/12043") — hace falta saber CUÁL
-// local antes de poder buscar el número, así que se pregunta como paso
-// intermedio entre elegir "local" y pedir el número/comprobante.
-const LOCAL_STORE_PROMPT = '¿En qué local fue la compra?';
-const LOCAL_STORE_BUTTONS = LOCAL_STORES.map(s => ({ id: `store_${s.id}`, title: s.name === 'Las Lomas de San Isidro' ? 'Las Lomas' : s.name }));
-const STORE_NAME_BY_BUTTON_ID = Object.fromEntries(LOCAL_STORES.map(s => [`store_${s.id}`, s.name]));
-// Detección de mención de local en texto libre (fuera del menú guiado por
-// botones) — ej: "compré en el local de las lomas", "es de Alcorta".
-const STORE_TEXT_PATTERNS = [
-  { name: 'Belgrano', re: /\bbelgrano\b/i },
-  { name: 'Las Lomas de San Isidro', re: /\b(las?\s*)?lomas\b|san\s*isidro/i },
-  { name: 'Alcorta', re: /\balcorta\b/i },
-];
-function detectStoreMention(text) {
-  const match = STORE_TEXT_PATTERNS.find(s => s.re.test(text));
-  return match?.name ?? null;
-}
-// Mensaje de seguimiento tras elegir web/local: depende de AMBAS cosas — el
-// tema (estado/cambio) y el canal ya elegido — para no volver a mencionar la
-// otra opción (ej: si ya dijo "web", no hay que aclarar "o el comprobante si
-// es local", porque ya sabemos que no lo es).
-const ORDER_TOPIC_FOLLOWUP = {
-  order_status: {
-    web: 'Dale, pasame el número de tu pedido para chequear el estado.',
-    local: 'Dale, pasame el número de comprobante para chequear el estado.',
-  },
-  order_change: {
-    web: 'Perfecto, pasame el número de tu pedido para gestionar el cambio.',
-    local: 'Perfecto, pasame el número de comprobante para gestionar el cambio.',
-  },
-};
-const STOCK_MENU_PROMPT = '¿Qué producto estás buscando?';
-const TALK_TO_AGENT_PROMPT = '¿Con qué equipo querés hablar?';
-const HORARIOS_FALLBACK = 'No tengo cargados los horarios en este momento. Te recomiendo chequear en https://techdi.com/ o te derivo con el equipo si preferís.';
-
-function buildDepartmentSections(departments) {
-  return [{
-    title: 'Equipo TechDI',
-    rows: departments.map(d => ({ id: `dept_${d.id}`, title: d.name.slice(0, 24) })),
-  }];
-}
-
 const URGENCY_KEYWORDS = [
-  /urgente/i, /urgencia/i, /devolución/i, /devolucion/i, /reembolso/i,
-  /reclamo/i, /estafa/i, /fraude/i, /nunca llegó/i, /nunca llego/i,
+  /urgente/i, /urgencia/i, /reclamo/i, /estafa/i, /fraude/i,
   /muy enojad/i, /indignado/i, /hablar con una persona/i, /quiero hablar/i,
 ];
-
-const TEN_DAYS_MS = 10 * 24 * 60 * 60 * 1000;
 
 // Returns true if current Argentina time is within business hours
 export function isWithinBusinessHours(botConfig = {}) {
@@ -168,41 +38,39 @@ export function isWithinBusinessHours(botConfig = {}) {
   return days.includes(day) && timeMin >= startH * 60 && timeMin < endH * 60;
 }
 
-function buildEscalationMessage(deptName, botConfig = {}) {
+function buildEscalationMessage(areaName, botConfig = {}) {
   const within = isWithinBusinessHours(botConfig);
   const startH = botConfig.businessHoursStart ?? 9;
   const endH   = botConfig.businessHoursEnd   ?? 18;
   const hoursStr = `${startH}:00 a ${endH}:00hs, lunes a viernes`;
+  const label = areaName ? `*${areaName}*` : 'nuestro equipo';
 
   if (within) {
-    return `Tu consulta fue derivada a *${deptName}* 👋\n\nUn agente va a atenderte en breve. Por favor aguardá unos minutos.\n\n🕐 Horario de atención: ${hoursStr}.`;
+    return `Tu consulta fue derivada a ${label} 👋\n\nUn agente va a atenderte en breve. Por favor aguardá unos minutos.\n\n🕐 Horario de atención: ${hoursStr}.`;
   } else {
-    return `Tu consulta fue derivada a *${deptName}* 👋\n\nEn este momento estamos fuera del horario de atención (${hoursStr}). Tu mensaje fue registrado y un agente te va a responder cuando retomemos.\n\n¡Gracias por tu paciencia!`;
+    return `Tu consulta fue derivada a ${label} 👋\n\nEn este momento estamos fuera del horario de atención (${hoursStr}). Tu mensaje fue registrado y un agente te va a responder cuando retomemos.\n\n¡Gracias por tu paciencia!`;
   }
 }
 
-function parseEscalationMarker(text, departments = []) {
-  // Build dynamic markers from active departments
-  const markers = departments.map(d => ({
-    re: new RegExp(`\\[ESCALAR_${d.id.toUpperCase()}\\]`, 'i'),
-    assignTo: d.id,
+function parseEscalationMarker(text, areas = []) {
+  const markers = areas.map(a => ({
+    re: new RegExp(`\\[ESCALAR_${a.id.toUpperCase()}\\]`, 'i'),
+    assignTo: a.id,
   }));
-  // Generic fallback always routes to atencion (never leaves assignedTo null)
-  markers.push({ re: /\[ESCALAR\]/i, assignTo: 'atencion' });
+  // Fallback genérico — no fuerza un área por defecto, queda sin asignar
+  // hasta que un agente lo tome manualmente.
+  markers.push({ re: /\[ESCALAR\]/i, assignTo: null });
 
   for (const { re, assignTo } of markers) {
     if (!re.test(text)) continue;
     const withoutLine = text.replace(/^[^\n]*\[ESCALAR[^\]]*\][^\n]*\n?/mi, '').trim();
     const cleanText = withoutLine || text.replace(re, '').trim();
-    return { shouldEscalate: true, assignTo: FORCE_ESCALATE_TO_ATENCION ? 'atencion' : assignTo, cleanText };
+    return { shouldEscalate: true, assignTo, cleanText };
   }
   return { shouldEscalate: false, assignTo: null, cleanText: text };
 }
 
 function parseCloseMarker(text) {
-  // Busca [CERRAR] en cualquier posición (no solo al principio) y sin
-  // importar mayúsculas/minúsculas — si el modelo no lo pone exactamente
-  // al inicio, antes quedaba como texto literal visible para el cliente.
   if (/\[CERRAR\]/i.test(text)) {
     return { shouldClose: true, cleanText: text.replace(/\[CERRAR\]\s*/i, '').trim() };
   }
@@ -223,115 +91,11 @@ function toWhatsAppBold(text) {
   return text.replace(/\*\*(.+?)\*\*/g, '*$1*');
 }
 
-async function sendEntryMenu(to) {
-  try {
-    const sent = await sendWhatsAppInteractiveList(to, ENTRY_MENU_BODY, ENTRY_MENU_BUTTON_TEXT, ENTRY_MENU_SECTIONS);
-    return !!sent;
-  } catch (err) {
-    console.error('[bot] Error enviando menú de entrada:', err.message);
-    return false;
-  }
-}
-
-async function handleMenuInteraction({ from, channel, interactiveId, conversation, departments, botConfig }) {
-  if (channel !== 'whatsapp') return false;
-
-  if (interactiveId === 'menu_order_status' || interactiveId === 'menu_order_change') {
-    const topic = interactiveId === 'menu_order_status' ? 'order_status' : 'order_change';
-    await setMenuState(from, { pendingMenuTopic: topic });
-    await appendMessage(from, { role: 'assistant', content: WEB_LOCAL_PROMPT });
-    await sendWhatsAppInteractiveButtons(from, WEB_LOCAL_PROMPT, WEB_LOCAL_BUTTONS)
-      .catch(err => console.error('[bot] Error enviando botones web/local:', err.message));
-    return true;
-  }
-
-  if (interactiveId === 'web') {
-    const topic = conversation.pendingMenuTopic;
-    const followupByChannel = ORDER_TOPIC_FOLLOWUP[topic] ?? ORDER_TOPIC_FOLLOWUP.order_status;
-    const followup = followupByChannel.web;
-    await setMenuState(from, { pendingMenuTopic: null, pendingLocalStore: null });
-    await appendMessage(from, { role: 'assistant', content: followup });
-    await sendWhatsAppMessage(from, followup)
-      .catch(err => console.error('[bot] Error enviando prompt de pedido:', err.message));
-    return true;
-  }
-
-  if (interactiveId === 'local') {
-    // Antes de pedir el número necesitamos saber CUÁL local — los pedidos de
-    // local son pos.order y su referencia depende del local exacto (ver
-    // findPosOrder). El tema (estado/cambio) ya quedó guardado en
-    // pendingMenuTopic desde el paso anterior, se sigue necesitando.
-    await appendMessage(from, { role: 'assistant', content: LOCAL_STORE_PROMPT });
-    await sendWhatsAppInteractiveButtons(from, LOCAL_STORE_PROMPT, LOCAL_STORE_BUTTONS)
-      .catch(err => console.error('[bot] Error enviando botones de local:', err.message));
-    return true;
-  }
-
-  if (interactiveId?.startsWith('store_')) {
-    const storeName = STORE_NAME_BY_BUTTON_ID[interactiveId];
-    if (!storeName) return false;
-    const topic = conversation.pendingMenuTopic;
-    const followupByChannel = ORDER_TOPIC_FOLLOWUP[topic] ?? ORDER_TOPIC_FOLLOWUP.order_status;
-    const followup = followupByChannel.local;
-    await setMenuState(from, { pendingMenuTopic: null, pendingLocalStore: storeName });
-    await appendMessage(from, { role: 'assistant', content: followup });
-    await sendWhatsAppMessage(from, followup)
-      .catch(err => console.error('[bot] Error enviando prompt de pedido de local:', err.message));
-    return true;
-  }
-
-  if (interactiveId === 'menu_stock') {
-    await appendMessage(from, { role: 'assistant', content: STOCK_MENU_PROMPT });
-    await sendWhatsAppMessage(from, STOCK_MENU_PROMPT)
-      .catch(err => console.error('[bot] Error enviando prompt de stock:', err.message));
-    return true;
-  }
-
-  if (interactiveId === 'menu_horarios') {
-    const content = await getKnowledgeItemByTitle('Horarios locales').catch(() => null);
-    const reply = content?.trim() || HORARIOS_FALLBACK;
-    await appendMessage(from, { role: 'assistant', content: reply });
-    await sendWhatsAppMessage(from, reply)
-      .catch(err => console.error('[bot] Error enviando horarios:', err.message));
-    return true;
-  }
-
-  if (interactiveId === 'menu_talk_to_agent') {
-    // Con FORCE_ESCALATE_TO_ATENCION no tiene sentido mostrarle al cliente
-    // una lista de equipos para elegir — todos terminan en el mismo lado
-    // igual, así que se deriva directo sin el paso intermedio.
-    if (FORCE_ESCALATE_TO_ATENCION) {
-      return handleMenuInteraction({ from, channel, interactiveId: 'dept_atencion', conversation, departments, botConfig });
-    }
-    await appendMessage(from, { role: 'assistant', content: TALK_TO_AGENT_PROMPT });
-    await sendWhatsAppInteractiveList(from, TALK_TO_AGENT_PROMPT, 'Ver equipos', buildDepartmentSections(departments))
-      .catch(err => console.error('[bot] Error enviando lista de departamentos:', err.message));
-    return true;
-  }
-
-  if (interactiveId?.startsWith('dept_')) {
-    const deptId = FORCE_ESCALATE_TO_ATENCION ? 'atencion' : interactiveId.slice('dept_'.length);
-    const dept = departments.find(d => d.id === deptId);
-    const deptName = dept?.name ?? 'Atención al cliente';
-    await dispatchConversation(from, { status: 'escalated', humanMode: true, assignedTo: dept?.id ?? null });
-    const escalationMsg = buildEscalationMessage(deptName, botConfig);
-    await appendMessage(from, { role: 'assistant', content: escalationMsg });
-    await sendWhatsAppMessage(from, escalationMsg)
-      .catch(err => console.error('[bot] Error enviando confirmación de escalación:', err.message));
-    return true;
-  }
-
-  return false;
-}
-
 // WhatsApp suele mandar mensajes de un mismo contacto en ráfagas de a
 // segundos (varias burbujas separadas). Cada una llega como un webhook HTTP
 // independiente y Express los procesa en paralelo, así que sin esta cola
 // dos mensajes casi simultáneos disparan dos llamadas a Claude en paralelo
-// con el mismo historial de partida — cada una responde y escala por su
-// cuenta, duplicando respuestas y derivaciones al equipo. Serializamos por
-// contactId para que el segundo mensaje espere a que el primero termine de
-// guardar su respuesta antes de arrancar.
+// con el mismo historial de partida. Serializamos por contactId.
 const contactLocks = new Map();
 
 export function processIncomingMessage(msg) {
@@ -349,10 +113,6 @@ export function processIncomingMessage(msg) {
 
 const REPLY_PREVIEW_MAX = 80;
 
-// Snapshot del mensaje citado (texto + rol) al momento de la cita — no una
-// referencia viva. Si el mensaje citado no está en el historial (se recortó
-// de los últimos 200, o es de antes de este cambio), no rompe nada: se
-// guarda el mensaje nuevo sin `replyTo`.
 function resolveReplyTo(history, replyToWaMsgId) {
   if (!replyToWaMsgId) return null;
   const original = history.find(m => m.waMsgId === replyToWaMsgId);
@@ -367,16 +127,16 @@ function resolveReplyTo(history, replyToWaMsgId) {
 async function processIncomingMessageInternal(msg) {
   const { channel, from, text, type, mediaId, mediaUrl, contactName, messageId, replyToWaMsgId } = msg;
 
-  let conversation, history, knowledgeBase, customer, availableLabels, configDoc, departments;
+  let conversation, history, knowledgeBase, customer, availableLabels, configDoc, areas;
   try {
-    [conversation, history, knowledgeBase, customer, availableLabels, configDoc, departments] = await Promise.all([
+    [conversation, history, knowledgeBase, customer, availableLabels, configDoc, areas] = await Promise.all([
       getOrCreateConversation(from, channel, contactName),
       getConversationHistory(from),
       getKnowledgeBasePrompt().catch(() => ''),
       getOrCreateCustomer(from, channel, contactName),
       getAllLabels().catch(() => []),
       getDb().collection('bot-techdi_config').doc('bot_config').get().catch(() => ({ exists: false, data: () => ({}) })),
-      getActiveDepartments().then(d => d.filter(dep => dep.id !== 'admin')).catch(() => []),
+      getActiveAreas().catch(() => []),
     ]);
   } catch (err) {
     console.error('[bot] Error cargando contexto para', from, err.message);
@@ -389,24 +149,16 @@ async function processIncomingMessageInternal(msg) {
   // Auto-reopen archived/resolved conversations when a new message arrives → always goes to bot
   const isArchived = ['resolved', 'bot_archived'].includes(conversation.status)
     || conversation.status === 'urgent'; // legacy urgent status
-  // Si el status es resolved/bot_archived, no debería haber nadie manejando
-  // la conversación en modo humano — esa combinación es en sí misma un
-  // estado inconsistente (ver Task 1 del fix). Se fuerza humanMode a false
-  // acá sin depender de su valor previo, para que el sistema se autorepare
-  // ante cualquier otra forma en que ese estado inconsistente pueda producirse.
   if (isArchived) {
     const previousStatus = conversation.status;
     await Promise.all([
       updateConversationStatus(from, 'bot'),
       updateHumanMode(from, false),
       updateAssignment(from, null),
-      setMenuState(from, { menuShown: false, pendingMenuTopic: null }),
     ]);
     conversation.status = 'bot';
     conversation.humanMode = false;
     conversation.assignedTo = null;
-    conversation.menuShown = false;
-    conversation.pendingMenuTopic = null;
     console.log(`[bot] Conversación ${from} reabierta automáticamente desde '${previousStatus}'`);
   }
 
@@ -433,36 +185,6 @@ async function processIncomingMessageInternal(msg) {
       await appendMessage(from, { role: 'user', content: text, contactName, messageId, ...(replyTo && { replyTo }) });
     }
     console.log(`[bot] humanMode activo para ${from} — bot silenciado`);
-    return;
-  }
-
-  // --- Menú guiado (flowMode === 'menu') ---
-  if (channel === 'whatsapp' && botConfig.flowMode === 'menu' && !conversation.menuShown) {
-    const sent = await sendEntryMenu(from);
-    if (sent) {
-      if (text?.trim()) {
-        await appendMessage(from, { role: 'user', content: text, contactName, messageId, ...(replyTo && { replyTo }) });
-      }
-      await appendMessage(from, { role: 'assistant', content: ENTRY_MENU_BODY });
-      await setMenuState(from, { menuShown: true });
-      console.log(`[bot] Menú de entrada enviado a ${from}`);
-      return;
-    }
-    // Si falla el envío, no guardamos el mensaje del usuario acá — sigue el
-    // flujo normal de abajo, que lo va a guardar una sola vez.
-    console.warn(`[bot] No se pudo enviar el menú de entrada a ${from} — sigue el flujo normal`);
-  }
-
-  // --- Respuestas del menú guiado (botones/listas) ---
-  if (type === 'interactive') {
-    await appendMessage(from, { role: 'user', content: text || '(selección de menú)', contactName, messageId, ...(replyTo && { replyTo }) });
-    const handled = await handleMenuInteraction({ from, channel, interactiveId: msg.interactiveId, conversation, departments, botConfig });
-    if (!handled) {
-      console.warn(`[bot] interactiveId no reconocido para ${from}: ${msg.interactiveId}`);
-      const fallbackMsg = 'Perdón, no reconocí esa opción. ¿Podés contarme en tus propias palabras en qué te ayudo?';
-      await appendMessage(from, { role: 'assistant', content: fallbackMsg });
-      await sendWhatsAppMessage(from, fallbackMsg).catch(() => {});
-    }
     return;
   }
 
@@ -525,52 +247,18 @@ async function processIncomingMessageInternal(msg) {
     setUrgentFlag(from, true).catch(() => {});
   }
 
-  // Check if this is a reopened conversation within 10 days (for context injection)
-  const isRecent = conversation.updatedAt
-    ? (Date.now() - (conversation.updatedAt._seconds ? conversation.updatedAt._seconds * 1000 : new Date(conversation.updatedAt).getTime())) < TEN_DAYS_MS
-    : false;
-
-  const [orderContext, stockInfo] = await Promise.all([
-    resolveOrderContext(text ?? '', customer, conversation, from),
-    resolveStockContext(text ?? ''),
-  ]);
   const customerContext = buildCustomerContext(customer);
-
-  if (orderContext.tnCustomer) {
-    linkCustomerFromOrder(from, orderContext.tnCustomer).catch(err =>
-      console.error('[bot] linkCustomer error:', err.message)
-    );
-  }
-
-  if (orderContext.orderRef) {
-    getDb().collection('bot-techdi_conversations').doc(from)
-      .update({ lastOrderRef: orderContext.orderRef })
-      .catch(() => {});
-  }
-
-  // pendingLocalStore: null limpia el local guardado (ya se usó para buscar),
-  // un string lo guarda (se mencionó el local pero todavía no el número) —
-  // undefined significa "no tocar" (el mensaje no tuvo nada que ver con esto).
-  if (orderContext.pendingLocalStore !== undefined) {
-    getDb().collection('bot-techdi_conversations').doc(from)
-      .update({ pendingLocalStore: orderContext.pendingLocalStore })
-      .catch(() => {});
-  }
 
   console.log(`[bot] Llamando a Claude para ${from}`);
   let botReply;
   try {
     botReply = await generateBotResponse(text ?? '', history, {
       knowledgeBase,
-      orderInfo: orderContext.orderInfo,
-      orderRef: orderContext.orderRef,
-      stockInfo,
       customerContext,
       availableLabels: availableLabels.map(l => l.name),
       botConfig,
       imageData,
-      departments,
-      isReopened: isRecent && history.length > 0,
+      areas,
     });
   } catch (err) {
     console.error(`[bot] Claude falló definitivamente para ${from} tras reintentos:`, err.message);
@@ -583,7 +271,7 @@ async function processIncomingMessageInternal(msg) {
   }
   console.log(`[bot] Claude respondió (${botReply.length} chars) para ${from}`);
 
-  const { shouldEscalate, assignTo, cleanText: textAfterEscalation } = parseEscalationMarker(botReply, departments);
+  const { shouldEscalate, assignTo, cleanText: textAfterEscalation } = parseEscalationMarker(botReply, areas);
   const { shouldClose, cleanText: textAfterClose } = parseCloseMarker(textAfterEscalation);
   const { labels: botLabels, newLabels: botNewLabels, cleanText: textAfterLabels } = parseLabelMarkers(textAfterClose);
   const cleanText = toWhatsAppBold(textAfterLabels);
@@ -599,11 +287,6 @@ async function processIncomingMessageInternal(msg) {
     console.log(`[bot] Labels aplicadas a ${from}:`, botLabels);
   }
 
-  // Se manda primero la respuesta del bot (explica la situación / por qué
-  // deriva) y recién después, si corresponde, el aviso automático de
-  // derivación — antes era al revés: el aviso de derivación salía primero
-  // y la explicación de Alto llegaba después, aunque en el historial
-  // guardado quedaban en el orden correcto. Confuso para el cliente.
   if (channel === 'whatsapp') {
     if (!cleanText.trim()) {
       console.warn(`[bot] cleanText vacío para ${from} — no se envía a WPP`);
@@ -632,239 +315,19 @@ async function processIncomingMessageInternal(msg) {
       humanMode: true,
       assignedTo: assignTo ?? null,
     });
-    console.log(`[bot] Escalando ${from} → agente: ${assignTo ?? 'sin asignar'}`);
+    console.log(`[bot] Escalando ${from} → área: ${assignTo ?? 'sin asignar'}`);
 
-    // Mensaje automático al cliente informando la derivación
-    const deptName = departments.find(d => d.id === assignTo)?.name ?? 'Atención al cliente';
-    const escalationMsg = buildEscalationMessage(deptName, botConfig);
-    if (escalationMsg) {
-      try {
-        await appendMessage(from, { role: 'assistant', content: escalationMsg });
-        if (channel === 'whatsapp') await sendWhatsAppMessage(from, escalationMsg);
-        else if (channel === 'instagram') await sendInstagramMessage(from, escalationMsg);
-      } catch (err) {
-        console.error('[bot] Error enviando mensaje de escalación:', err.message);
-      }
+    const areaName = areas.find(a => a.id === assignTo)?.name ?? null;
+    const escalationMsg = buildEscalationMessage(areaName, botConfig);
+    try {
+      await appendMessage(from, { role: 'assistant', content: escalationMsg });
+      if (channel === 'whatsapp') await sendWhatsAppMessage(from, escalationMsg);
+      else if (channel === 'instagram') await sendInstagramMessage(from, escalationMsg);
+    } catch (err) {
+      console.error('[bot] Error enviando mensaje de escalación:', err.message);
     }
   } else if (shouldClose) {
     await updateConversationStatus(from, 'resolved');
     console.log(`[bot] Conversación ${from} resuelta por el bot`);
   }
-}
-
-async function resolveStockContext(text) {
-  if (!text) return null;
-
-  // El cliente pasó directamente un SKU (típico cuando el bot ya preguntó
-  // "¿qué producto?" y responde solo con el código) → consultar Odoo directo,
-  // sin depender de las palabras clave de STOCK_PATTERNS ni de la búsqueda
-  // por nombre en TiendaNube.
-  const skuMatch = text.match(SKU_PATTERN);
-  if (skuMatch) {
-    try {
-      const sku = skuMatch[0].toUpperCase();
-      const stockResult = await getStockBySku(sku);
-      console.log(`[bot] stock para SKU ${sku} (detectado directo):`, stockResult);
-      return formatStockInfo(sku, sku, stockResult);
-    } catch (err) {
-      console.error('[bot] resolveStockContext (SKU directo) error:', err.message);
-      return null;
-    }
-  }
-
-  if (!STOCK_PATTERNS.some(re => re.test(text))) return null;
-
-  try {
-    const products = await searchProducts(text);
-    if (!products?.length) return null;
-
-    let sku = null;
-    let productName = null;
-    for (const p of products) {
-      const variants = p.variants ?? [];
-      const withSku = variants.find(v => v.sku);
-      if (withSku) {
-        sku = withSku.sku;
-        const n = p.name;
-        productName = typeof n === 'string' ? n
-          : (n?.es ?? n?.en ?? Object.values(n ?? {})[0] ?? 'Producto');
-        break;
-      }
-    }
-
-    if (!sku) return null;
-
-    const stockResult = await getStockBySku(sku);
-    console.log(`[bot] stock para SKU ${sku}:`, stockResult);
-    return formatStockInfo(productName, sku, stockResult);
-  } catch (err) {
-    console.error('[bot] resolveStockContext error:', err.message);
-    return null;
-  }
-}
-
-async function resolveOrderContext(text, customer, conversation = {}, from = null) {
-  const trimmed = text.trim();
-
-  if (trimmed.includes('@')) {
-    const [tnOrders, odooOrders] = await Promise.all([
-      findOrdersByEmail(trimmed),
-      findOdooOrdersByContact(trimmed),
-    ]);
-    if (tnOrders.length) {
-      const summary = tnOrders.map(o => formatOrderStatus(o)).filter(Boolean);
-      return { orderInfo: summary, tnCustomer: tnOrders[0]?.customer ?? null };
-    }
-    if (odooOrders.length) {
-      const summary = odooOrders.map(o => formatOdooOrder(o)).filter(Boolean);
-      return { orderInfo: summary, tnCustomer: null };
-    }
-    return { orderInfo: null, tnCustomer: null };
-  }
-
-  // Mensaje es directamente el número (con o sin "#"), ej: bot preguntó
-  // "¿número de pedido?" y el cliente contesta solo "20610" o "#20610".
-  const bareMatch = trimmed.match(ORDER_BARE_NUMBER);
-
-  // Palabra clave de pedido en cualquier parte del mensaje + número en
-  // cualquier parte del mensaje (no hace falta que estén pegados).
-  const hasKeyword = ORDER_KEYWORD.test(trimmed);
-  const tokenMatch = trimmed.match(ORDER_REF_TOKEN);
-
-  const orderRef = bareMatch?.[1] ?? (hasKeyword && tokenMatch ? tokenMatch[1] : null);
-
-  // Ya sabemos que la compra fue en un local físico (por el menú guiado
-  // "local" → elegir sucursal, o porque lo mencionó en este mismo mensaje).
-  // Los pedidos de local son pos.order en Odoo, un modelo y una numeración
-  // totalmente distintos de los pedidos web — NUNCA hay que buscarlos en
-  // TiendaNube ni en sale.order genérico.
-  const mentionedStore = detectStoreMention(trimmed);
-  const localStore = mentionedStore ?? conversation.pendingLocalStore ?? null;
-
-  if (localStore && orderRef) {
-    const posResult = await findPosOrder(localStore, orderRef);
-    return {
-      orderInfo: posResult ? formatPosOrder(posResult.order, posResult.lines) : null,
-      tnCustomer: null,
-      orderRef,
-      pendingLocalStore: null, // consumido — limpiar para no arrastrarlo a la próxima consulta
-    };
-  }
-
-  // Mencionó el local pero todavía no el número — lo guardamos para cuando
-  // llegue el número en un mensaje posterior.
-  if (mentionedStore && !orderRef) {
-    return { orderInfo: null, tnCustomer: null, orderRef: null, pendingLocalStore: mentionedStore };
-  }
-
-  if (orderRef) {
-    const result = await searchOrderByRef(orderRef, customer?.tnEmail);
-    return { ...result, orderRef };
-  }
-
-  // Hay intención de consultar un pedido/compra pero sin número
-  const hasIntentWithoutNumber = hasKeyword || ORDER_INTENT_NO_NUMBER_PATTERNS.some(re => re.test(trimmed));
-  if (hasIntentWithoutNumber) {
-    // Sin número → priorizar la última orden mencionada en esta conversación,
-    // luego la del perfil del cliente
-    const fallbackRef = conversation.lastOrderRef ?? String(customer?.tnOrders?.[0]?.number ?? '');
-    if (fallbackRef) {
-      console.log(`[bot] Sin número en mensaje, usando orden del contexto: #${fallbackRef}`);
-      const result = await searchOrderByRef(fallbackRef, customer?.tnEmail);
-      return { ...result, orderRef: fallbackRef };
-    }
-
-    // Tampoco hay referencia previa: puede ser una compra de local físico.
-    // Buscar por el teléfono del cliente (ya lo tenemos, es el número de
-    // WhatsApp) tanto en pos.order (compras en local) como en sale.order
-    // (pedidos "S..." cargados a mano) antes de rendirse.
-    if (from) {
-      const [posOrders, odooOrders] = await Promise.all([
-        findPosOrdersByContact(from),
-        findOdooOrdersByContact(from),
-      ]);
-      if (posOrders.length || odooOrders.length) {
-        console.log(`[bot] Pedido de local encontrado en Odoo por teléfono para ${from}`);
-        const summary = [
-          ...posOrders.map(o => formatPosOrder(o)),
-          ...odooOrders.map(o => formatOdooOrder(o)),
-        ].filter(Boolean);
-        return { orderInfo: summary, tnCustomer: null };
-      }
-    }
-
-    return { orderInfo: null, tnCustomer: null };
-  }
-
-  return { orderInfo: null, tnCustomer: null };
-}
-
-/**
- * Enruta la búsqueda de un pedido según el formato de la referencia:
- *
- * - Número puro (51689)    → TiendaNube primero (número visible para el cliente en pedidos web)
- *                            Si TN lo encuentra, intenta enriquecer con Odoo via TN{id_interno}
- *                            Si TN no lo encuentra, fallback a Odoo (puede ser local con número numérico)
- * - S-prefijo (S08121)     → Odoo directo (pedido de local físico)
- * - TN-prefijo (TN123...)  → Odoo directo (referencia interna de pedido web importado)
- * - Alfanumérico genérico  → Odoo directo
- */
-async function searchOrderByRef(orderRef, email = null) {
-  const isPureNumber = /^\d+$/.test(orderRef);
-  const isOdooLocal  = /^S\d+$/i.test(orderRef);
-  const isOdooTN     = /^TN\d+$/i.test(orderRef);
-
-  // --- Número puro: pedido web, se busca ÚNICA Y EXCLUSIVAMENTE en TiendaNube.
-  // Los pedidos de local usan referencia con prefijo "S" (ver más abajo) y
-  // pasan por Odoo; un número puro siempre es un pedido web, así que nunca
-  // hace falta (ni conviene) consultar Odoo acá.
-  if (isPureNumber) {
-    const tnOrder = await findOrder(orderRef);
-
-    if (tnOrder) {
-      console.log(`[bot] Pedido #${orderRef} encontrado en TiendaNube (TN id: ${tnOrder.id})`);
-      return { orderInfo: formatOrderStatus(tnOrder), tnCustomer: tnOrder.customer ?? null };
-    }
-
-    // Último recurso: si ya sabemos el email del cliente en esta conversación
-    // (por ejemplo lo dio en un mensaje anterior), reintentar por email.
-    // Cubre pedidos 'open' que q= no indexa y que la paginación por número
-    // puede fallar en encontrar bajo tráfico alto (rate limiting de TiendaNube).
-    if (email) {
-      console.log(`[bot] Pedido #${orderRef} no encontrado, reintentando por email conocido (${email})`);
-      const emailOrders = await findOrdersByEmail(email);
-      const match = emailOrders.find(o => String(o.number) === orderRef);
-      if (match) {
-        console.log(`[bot] Pedido #${orderRef} encontrado vía email conocido`);
-        return { orderInfo: formatOrderStatus(match), tnCustomer: match.customer ?? null };
-      }
-    }
-
-    return { orderInfo: null, tnCustomer: null };
-  }
-
-  // --- Referencia de Odoo (S... o TN...) ---
-  if (isOdooLocal || isOdooTN) {
-    const odooResult = await findOdooOrder(orderRef);
-    if (odooResult) {
-      const odooInfo = formatOdooOrder(odooResult.order, odooResult.lines);
-      // Si es un pedido TN en Odoo, intentar obtener tracking URL desde TiendaNube
-      if (isOdooTN) {
-        const tnId = orderRef.replace(/^TN/i, '');
-        try {
-          const tnOrder = await getTNOrderById(tnId);
-          if (tnOrder?.shipping_tracking_url) odooInfo.tracking = tnOrder.shipping_tracking_url;
-        } catch { /* tracking es opcional */ }
-      }
-      return { orderInfo: odooInfo, tnCustomer: null };
-    }
-    return { orderInfo: null, tnCustomer: null };
-  }
-
-  // --- Alfanumérico genérico → Odoo ---
-  const odooResult = await findOdooOrder(orderRef);
-  if (odooResult) {
-    return { orderInfo: formatOdooOrder(odooResult.order, odooResult.lines), tnCustomer: null };
-  }
-  return { orderInfo: null, tnCustomer: null };
 }
