@@ -52,8 +52,8 @@ rm -f BOT-TECHDI/CONTEXT_NUEVO_BOT.md
 - [ ] **Step 2: Verify the copy**
 
 ```bash
-ls BOT-TECHDI/server/src/services | wc -l   # expect 17 (same file count as AR's server/src/services)
-ls BOT-TECHDI/client/src/pages | wc -l      # expect 24 (12 .jsx + 12 .module.css)
+ls BOT-TECHDI/server/src/services | wc -l   # expect 18 (same file count as AR's server/src/services)
+ls BOT-TECHDI/client/src/pages | wc -l      # expect 30 (15 .jsx + 15 .module.css)
 test -f BOT-TECHDI/server/.env && echo "FAIL: .env got copied" || echo "OK: no .env copied"
 test -f BOT-TECHDI/client/logo.webp && echo "FAIL: logo.webp got copied" || echo "OK: no logo copied"
 ```
