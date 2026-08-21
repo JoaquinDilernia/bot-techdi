@@ -1,7 +1,6 @@
 import crypto from 'crypto';
 import { getDb } from './firebase.service.js';
 import { sendWhatsAppTemplate } from './meta.service.js';
-import { getOrderById } from './tiendanube.service.js';
 import { getOrCreateConversation, appendMessage, updateMessageStatus, markNotified } from './conversation.service.js';
 
 const FOLLOWUP_COLLECTION = 'bot-techdi_pickup_followups';
@@ -280,7 +279,8 @@ export async function sendPickupFollowups() {
 
     let order = null;
     try {
-      order = await getOrderById(data.orderId);
+      // NOTE: getOrderById was removed (tiendanube.service.js deleted in Task 4)
+      // order = await getOrderById(data.orderId);
     } catch { /* tratamos como no encontrado */ }
 
     const stillPending = order && PENDING_PICKUP_STATUSES.includes(order.shipping_status);

@@ -1,7 +1,5 @@
 import { getDb } from './firebase.service.js';
 import admin from 'firebase-admin';
-import { findOrder } from './tiendanube.service.js';
-import { findOdooOrder, getPartnerContact } from './odoo.service.js';
 
 const COLLECTION = 'bot-techdi_conversations';
 
@@ -334,29 +332,6 @@ function matchesText(data, qLower) {
   return messages.some(m => (m.content || '').toLowerCase().includes(qLower));
 }
 
-// Misma lógica de reconocimiento de formato de pedido que usa
-// searchOrderByRef en bot.service.js (número puro, S-prefijo, TN-prefijo).
-async function resolveOrderContactPhone(orderRef) {
-  const isPureNumber = /^\d+$/.test(orderRef);
-  const isOdooLocal  = /^S\d+$/i.test(orderRef);
-  const isOdooTN     = /^TN\d+$/i.test(orderRef);
-
-  if (isPureNumber) {
-    const tnOrder = await findOrder(orderRef);
-    return tnOrder?.customer?.phone ?? null;
-  }
-
-  if (isOdooLocal || isOdooTN) {
-    const odooResult = await findOdooOrder(orderRef);
-    const partnerId = Array.isArray(odooResult?.order?.partner_id) ? odooResult.order.partner_id[0] : null;
-    if (!partnerId) return null;
-    const contact = await getPartnerContact(partnerId);
-    return contact?.phone || null;
-  }
-
-  return null;
-}
-
 export async function searchConversations(query) {
   const q = String(query ?? '').trim();
   if (q.length < 2) return [];
@@ -368,25 +343,8 @@ export async function searchConversations(query) {
 
   const textMatchEntries = entries.filter(({ data }) => matchesText(data, qLower));
 
-  const cleanedRef = q.replace(/^#/, '');
-  const looksLikeOrderRef = /^\d+$/.test(cleanedRef) || /^S\d+$/i.test(cleanedRef) || /^TN\d+$/i.test(cleanedRef);
-
-  let orderMatchEntries = [];
-  if (looksLikeOrderRef) {
-    const phone = await resolveOrderContactPhone(cleanedRef);
-    if (phone) {
-      orderMatchEntries = entries.filter(({ data }) =>
-        data.channel === 'whatsapp' && phoneDigitsMatch(data.contactId, phone)
-      );
-    }
-  }
-
-  const merged = new Map();
-  for (const { doc, data } of [...textMatchEntries, ...orderMatchEntries]) {
-    merged.set(doc.id, mapConversationDoc(doc, data));
-  }
-
-  return [...merged.values()]
+  return textMatchEntries
+    .map(({ doc, data }) => mapConversationDoc(doc, data))
     .sort((a, b) => tsToMs(b.updatedAt) - tsToMs(a.updatedAt))
     .slice(0, 100);
 }

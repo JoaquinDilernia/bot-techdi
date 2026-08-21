@@ -12,18 +12,24 @@ import {
   addLabelToConversation,
   setMenuState,
 } from './conversation.service.js';
-import { findOrder, findOrdersByEmail, getOrderById as getTNOrderById, formatOrderStatus, searchProducts } from './tiendanube.service.js';
-import { findOdooOrder, findOdooOrdersByContact, findOdooOrdersByName, formatOdooOrder, getStockBySku, formatStockInfo, findPosOrder, findPosOrdersByContact, formatPosOrder, LOCAL_STORES } from './odoo.service.js';
+// NOTE: Commented out in Task 4 (tiendanube.service.js and odoo.service.js deleted)
+// These will be re-imported/rewritten in Task 5
+// import { findOrder, findOrdersByEmail, getOrderById as getTNOrderById, formatOrderStatus, searchProducts } from './tiendanube.service.js';
+// import { findOdooOrder, findOdooOrdersByContact, findOdooOrdersByName, formatOdooOrder, getStockBySku, formatStockInfo, findPosOrder, findPosOrdersByContact, formatPosOrder, LOCAL_STORES } from './odoo.service.js';
 import { sendWhatsAppMessage, sendInstagramMessage, downloadMediaAsBase64, sendWhatsAppInteractiveList, sendWhatsAppInteractiveButtons } from './meta.service.js';
 import {
   getOrCreateCustomer,
-  enrichCustomerFromTiendaNube,
+  // enrichCustomerFromTiendaNube, // Removed in Task 4
   buildCustomerContext,
-  linkCustomerFromOrder,
+  // linkCustomerFromOrder, // Removed in Task 4
 } from './customer.service.js';
 import { getAllLabels, createLabel } from './label.service.js';
 import { getActiveDepartments } from './department.service.js';
 import { getDb } from './firebase.service.js';
+
+// NOTE: LOCAL_STORES was imported from odoo.service.js (deleted in Task 4)
+// This is a placeholder to prevent crashes — will be rewritten in Task 5
+const LOCAL_STORES = [];
 
 // Captura números Odoo (S08121), TiendaNube (TN1999675391) y números puros.
 // El número puede venir con o sin "#" y en cualquier parte del mensaje — NO
