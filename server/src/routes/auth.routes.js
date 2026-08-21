@@ -53,9 +53,9 @@ router.get('/users', requireAuth, async (req, res) => {
 
 router.post('/users', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { email, name, password, role, department } = req.body;
+    const { email, name, password, role, areaIds } = req.body;
     if (!email || !name || !password) return res.status(400).json({ error: 'email, name y password son requeridos' });
-    const user = await createUser({ email, name, password, role, department: department ?? null });
+    const user = await createUser({ email, name, password, role, areaIds: areaIds ?? [] });
     res.status(201).json(user);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -64,7 +64,7 @@ router.post('/users', requireAuth, requireAdmin, async (req, res) => {
 
 router.put('/users/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { name, role, department } = req.body;
+    const { name, role, areaIds } = req.body;
     const VALID_ROLES = ['admin', 'atencion_cliente', 'operador'];
     if (role && !VALID_ROLES.includes(role)) {
       return res.status(400).json({ error: `Rol inválido. Válidos: ${VALID_ROLES.join(', ')}` });
@@ -72,7 +72,7 @@ router.put('/users/:id', requireAuth, requireAdmin, async (req, res) => {
     if (req.params.id === req.agent.id && role && role !== req.agent.role) {
       return res.status(400).json({ error: 'No podés cambiar tu propio rol' });
     }
-    const updated = await updateUser(req.params.id, { name, role, department: department !== undefined ? (department ?? null) : undefined });
+    const updated = await updateUser(req.params.id, { name, role, areaIds });
     res.json(updated);
   } catch (err) {
     res.status(500).json({ error: err.message });
