@@ -1,0 +1,113 @@
+import 'dotenv/config';
+import express from 'express';
+import cors from 'cors';
+import morgan from 'morgan';
+import cron from 'node-cron';
+
+import webhookRoutes from './routes/webhook.routes.js';
+import knowledgeRoutes from './routes/knowledge.routes.js';
+import conversationRoutes from './routes/conversation.routes.js';
+import configRoutes from './routes/config.routes.js';
+import tiendaNubeRoutes from './routes/tiendanube.routes.js';
+import customerRoutes from './routes/customer.routes.js';
+import testRoutes from './routes/test.routes.js';
+import authRoutes from './routes/auth.routes.js';
+import labelRoutes from './routes/label.routes.js';
+import statsRoutes from './routes/stats.routes.js';
+import quickReplyRoutes from './routes/quickreply.routes.js';
+import templateRoutes from './routes/template.routes.js';
+import costsRoutes from './routes/costs.routes.js';
+import { initFirebase } from './services/firebase.service.js';
+import departmentRoutes from './routes/department.routes.js';
+import notificationsRoutes from './routes/notifications.routes.js';
+import { seedAgentsIfNeeded } from './services/auth.service.js';
+import { seedDepartmentsIfNeeded } from './services/department.service.js';
+import { requireAuth, requireAtLeastAtencionCliente } from './middleware/requireAuth.js';
+import { closeInactiveConversations } from './services/inactivity.service.js';
+import { sendEscalationFollowups } from './services/escalation.service.js';
+import { sendPickupFollowups } from './services/notifications.service.js';
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Init Firebase
+initFirebase();
+seedAgentsIfNeeded().catch(err => console.error('[seed] Error seeding agents:', err));
+seedDepartmentsIfNeeded().catch(err => console.error('[seed] Error seeding departments:', err));
+
+// Inactivity cron: runs every hour, closes bot-handled conversations idle >24h
+cron.schedule('0 * * * *', () => {
+  closeInactiveConversations().catch(err => console.error('[cron] inactivity error:', err));
+});
+
+// Escalation followup: every 30min, sends a reminder to clients waiting >2hs without agent response
+cron.schedule('*/30 * * * *', () => {
+  sendEscalationFollowups().catch(err => console.error('[cron] escalation followup error:', err));
+});
+
+// Pickup followups: once a day, sends day-3/day-7 reminder templates for
+// orders still pending pickup after the initial notification
+cron.schedule('0 10 * * *', () => {
+  sendPickupFollowups().catch(err => console.error('[cron] pickup followup error:', err));
+});
+
+// Middleware
+const allowedOrigins = [
+  'http://localhost:5173',
+  ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map(s => s.trim()) : []),
+].filter(Boolean);
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || allowedOrigins.includes(origin)) cb(null, true);
+    else cb(new Error('CORS not allowed'));
+  },
+  credentials: true,
+}));
+app.use(morgan('dev'));
+
+// Raw body para validación de firma Meta (debe ir antes del JSON parser)
+app.use('/api/webhook', express.raw({ type: 'application/json' }));
+app.use(express.json());
+
+// Routes (public)
+app.use('/api/webhook', webhookRoutes);
+app.use('/api/auth', authRoutes);
+
+// Routes (protected)
+// Operador can access: conversations (filtered), labels
+// atencion_cliente + admin: all of the below
+app.use('/api/conversations', requireAuth, conversationRoutes);
+app.use('/api/labels', requireAuth, labelRoutes);
+
+// Requires at least atencion_cliente
+app.use('/api/knowledge',     requireAuth, requireAtLeastAtencionCliente, knowledgeRoutes);
+// Los operadores necesitan leer la config (ej: seguimiento de retiro en
+// Notificaciones) — la restricción de escritura vive dentro del router.
+app.use('/api/config',        requireAuth, configRoutes);
+app.use('/api/tiendanube',    requireAuth, requireAtLeastAtencionCliente, tiendaNubeRoutes);
+// Un operador que atiende una conversación derivada necesita ver el perfil
+// del cliente (compras, notas) y poder actualizarlo — no es una acción de
+// administración global como el resto de este bloque.
+app.use('/api/customers',     requireAuth, customerRoutes);
+app.use('/api/test',          requireAuth, requireAtLeastAtencionCliente, testRoutes);
+app.use('/api/stats',         requireAuth, requireAtLeastAtencionCliente, statsRoutes);
+app.use('/api/quick-replies', requireAuth, requireAtLeastAtencionCliente, quickReplyRoutes);
+// Los operadores necesitan leer templates para usar Notificaciones — la
+// restricción de escritura (crear/sincronizar/borrar) vive dentro del router.
+app.use('/api/templates',     requireAuth, templateRoutes);
+app.use('/api/costs',         requireAuth, requireAtLeastAtencionCliente, costsRoutes);
+// El propio router ya restringe crear/editar/borrar a requireAdmin —
+// la lectura la necesita cualquier operador para derivar conversaciones.
+app.use('/api/departments',   requireAuth, departmentRoutes);
+app.use('/api/notifications',  requireAuth, notificationsRoutes);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', version: '1.0.0', service: 'bot-altorancho' });
+});
+
+app.listen(PORT, () => {
+  console.log(`[server] BOT-ALTORANCHO corriendo en puerto ${PORT}`);
+});
+
+export default app;
