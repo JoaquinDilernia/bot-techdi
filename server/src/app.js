@@ -2,7 +2,6 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
-import cron from 'node-cron';
 
 import webhookRoutes from './routes/webhook.routes.js';
 import knowledgeRoutes from './routes/knowledge.routes.js';
@@ -21,8 +20,6 @@ import areaRoutes from './routes/area.routes.js';
 import { seedAgentsIfNeeded } from './services/auth.service.js';
 import { seedAreasIfNeeded } from './services/area.service.js';
 import { requireAuth, requireAtLeastAtencionCliente } from './middleware/requireAuth.js';
-import { closeInactiveConversations } from './services/inactivity.service.js';
-import { sendEscalationFollowups } from './services/escalation.service.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -31,16 +28,6 @@ const PORT = process.env.PORT || 3001;
 initFirebase();
 seedAgentsIfNeeded().catch(err => console.error('[seed] Error seeding agents:', err));
 seedAreasIfNeeded().catch(err => console.error('[seed] Error seeding areas:', err));
-
-// Inactivity cron: runs every hour, closes bot-handled conversations idle >24h
-cron.schedule('0 * * * *', () => {
-  closeInactiveConversations().catch(err => console.error('[cron] inactivity error:', err));
-});
-
-// Escalation followup: every 30min, sends a reminder to clients waiting >2hs without agent response
-cron.schedule('*/30 * * * *', () => {
-  sendEscalationFollowups().catch(err => console.error('[cron] escalation followup error:', err));
-});
 
 // Middleware
 const allowedOrigins = [

@@ -23,11 +23,8 @@ const CHANNEL_CONFIG = {
 const FILTERS = [
   { value: 'bot',           label: 'Bot' },
   { value: 'mine',          label: 'Mis casos' },
-  { value: 'critical',      label: '🔴 Crítico' },
-  { value: 'urgent',        label: 'Urgentes' },
-  { value: 'waiting',       label: 'Esperando ⏳' },
-  { value: 'archived',      label: 'Archivos' },
   { value: 'teams',         label: 'Equipos',  minRole: 'atencion_cliente' },
+  { value: 'archived',      label: 'Archivados' },
 ];
 
 const SLA_WARN_MS  = 15 * 60 * 1000;  // 15 min → amarillo
@@ -155,7 +152,7 @@ async function downloadMedia(url, suggestedExt = 'jpg') {
   }
 }
 
-const REPLY_ROLE_LABELS = { user: 'Cliente', admin: 'Agente', assistant: 'Alto' };
+const REPLY_ROLE_LABELS = { user: 'Cliente', admin: 'Agente', assistant: 'Bot' };
 
 function MessageBubble({ msg, onRetry, contactId }) {
   const isUser = msg.role === 'user';
@@ -256,7 +253,7 @@ function MessageBubble({ msg, onRetry, contactId }) {
         )}
       </div>
       <span className={styles.msgMeta}>
-        {isUser ? 'Cliente' : isAdmin ? 'Agente' : 'Alto'}
+        {isUser ? 'Cliente' : isAdmin ? 'Agente' : 'Bot'}
         {msg.timestamp ? ` · ${formatDateTime(msg.timestamp)}` : ''}
         {isAdmin && <MsgStatusIcon msgStatus={msg.msgStatus} />}
       </span>
@@ -1274,7 +1271,7 @@ export default function Conversations() {
               /* ---- Bot is handling the conversation ---- */
               <div className={styles.botFooter}>
                 <span className={styles.botFooterDot} />
-                <span className={styles.botFooterText}>Alto está respondiendo automáticamente</span>
+                <span className={styles.botFooterText}>El bot está respondiendo automáticamente</span>
                 <button
                   className={styles.takeOverBtn}
                   onClick={() => dispatch('take_over', { agentId: myId })}
