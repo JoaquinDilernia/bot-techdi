@@ -100,6 +100,12 @@ function formatDate(ts) {
   return d.toLocaleDateString('es-AR');
 }
 
+function formatRecordTime(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
+  const s = (totalSeconds % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
 function hoursAgo(ts) {
   const d = tsToDate(ts);
   if (!d) return 0;
@@ -327,6 +333,7 @@ export default function Conversations() {
   const { agent } = useAuth();
   const [conversations, setConversations] = useState([]);
   const [selected, setSelected] = useState(null);
+  const [showMobileProfile, setShowMobileProfile] = useState(false); // mobile-only: perfil como panel deslizable
   const [messages, setMessages] = useState([]);
   const [customer, setCustomer] = useState(null);
   const [notes, setNotes] = useState('');
@@ -340,6 +347,9 @@ export default function Conversations() {
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [recordedAudio, setRecordedAudio] = useState(null); // { blob, url, mimeType } — grabado, pendiente de enviar/descartar
   const [updating, setUpdating] = useState(false);
   const [loading, setLoading] = useState(true);
   const [allLabels, setAllLabels] = useState([]);
@@ -374,6 +384,10 @@ export default function Conversations() {
   const pollMsgRef = useRef(null);
   const selectedIdRef = useRef(null);
   const mediaInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const mediaStreamRef = useRef(null);
+  const recordTimerRef = useRef(null);
 
   const labelMap = Object.fromEntries(allLabels.map(l => [l.name, l.color]));
   const myId = agent?.id;
@@ -759,6 +773,99 @@ export default function Conversations() {
     } finally { setSending(false); }
   }
 
+  // WhatsApp acepta audio/ogg (opus), audio/mp4, audio/mpeg, audio/amr, audio/aac como
+  // adjunto — pero MediaRecorder en Chrome sólo graba nativamente en audio/webm. Se prueba
+  // en este orden para usar el formato "nativo" de WhatsApp cuando el navegador lo soporte
+  // (Firefox sí puede grabar ogg/opus directo) y sólo cae a webm si no hay otra opción.
+  const AUDIO_MIME_CANDIDATES = ['audio/ogg;codecs=opus', 'audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'];
+
+  function pickAudioMimeType() {
+    if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+    return AUDIO_MIME_CANDIDATES.find(t => MediaRecorder.isTypeSupported(t)) ?? '';
+  }
+
+  async function startRecording() {
+    if (recording || !selected) return;
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+      const mimeType = pickAudioMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = e => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        setRecordedAudio({ blob, url: URL.createObjectURL(blob), mimeType: recorder.mimeType || 'audio/webm' });
+        stream.getTracks().forEach(t => t.stop());
+        mediaStreamRef.current = null;
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = setInterval(() => setRecordSeconds(s => s + 1), 1000);
+    } catch {
+      alert('No se pudo acceder al micrófono. Revisá los permisos del navegador para este sitio.');
+    }
+  }
+
+  function stopRecording() {
+    if (!recording) return;
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+    clearInterval(recordTimerRef.current);
+    recordTimerRef.current = null;
+  }
+
+  function discardRecordedAudio() {
+    if (recordedAudio) URL.revokeObjectURL(recordedAudio.url);
+    setRecordedAudio(null);
+    setRecordSeconds(0);
+  }
+
+  async function sendRecordedAudio() {
+    if (!recordedAudio || !selected || sending) return;
+    setSending(true);
+    try {
+      const ext = recordedAudio.mimeType.includes('ogg') ? 'ogg' : recordedAudio.mimeType.includes('mp4') ? 'm4a' : 'webm';
+      const form = new FormData();
+      form.append('file', recordedAudio.blob, `nota-de-voz.${ext}`);
+      const r = await authFetch(BASE_URL + `/api/conversations/${selected.id}/media`, {
+        method: 'POST',
+        body: form,
+      });
+      await loadMessages(selected.id);
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        if (data.windowExpired) {
+          setApiWindowError(true);
+          if (templates.length === 0) loadTemplates();
+        } else {
+          alert(`⚠️ ${data.error ?? 'Error enviando audio'}`);
+        }
+      }
+    } finally {
+      setSending(false);
+      URL.revokeObjectURL(recordedAudio.url);
+      setRecordedAudio(null);
+      setRecordSeconds(0);
+    }
+  }
+
+  // Si cambia la conversación seleccionada (o se desmonta la página) con una grabación en
+  // curso o pendiente de enviar, se descarta — no tiene sentido mandarla a otro contacto.
+  useEffect(() => {
+    setRecordedAudio(prev => { if (prev) URL.revokeObjectURL(prev.url); return null; });
+    setRecording(false);
+    setRecordSeconds(0);
+    setShowMobileProfile(false);
+    return () => {
+      mediaStreamRef.current?.getTracks().forEach(t => t.stop());
+      mediaRecorderRef.current = null;
+      clearInterval(recordTimerRef.current);
+    };
+  }, [selected?.id]);
+
   const isHuman = selected?.humanMode;
   const currentStatus = selected?.status || 'bot';
   const isArchived = currentStatus === 'bot_archived' || currentStatus === 'resolved';
@@ -832,7 +939,7 @@ export default function Conversations() {
   return (
     <div className={styles.page}>
       {/* ---- Sidebar ---- */}
-      <aside className={styles.sidebar}>
+      <aside className={`${styles.sidebar} ${selected ? styles.mobileHiddenPanel : ''}`}>
         <div className={styles.sidebarHeader}>
           <div className={styles.sidebarTop}>
             <h1 className={styles.sidebarTitle}>Conversaciones</h1>
@@ -912,7 +1019,7 @@ export default function Conversations() {
       </aside>
 
       {/* ---- Thread ---- */}
-      <main className={styles.thread}>
+      <main className={`${styles.thread} ${!selected ? styles.mobileHiddenPanel : ''}`}>
         {!selected ? (
           <div className={styles.threadEmpty}>
             <div className={styles.threadEmptyIcon}>💬</div>
@@ -923,11 +1030,27 @@ export default function Conversations() {
             <div className={styles.threadHeader}>
               {/* Row 1: name + close/reopen */}
               <div className={styles.threadHeaderTop}>
+                <button
+                  type="button"
+                  className={styles.backBtn}
+                  onClick={() => setSelected(null)}
+                  title="Volver al listado"
+                >
+                  ←
+                </button>
                 <span className={styles.threadName}>
                   {selected.contactName || selected.contactId}
                   {isUrgentFlag && <span style={{ marginLeft: 6, fontSize: 14 }}>⚡</span>}
                 </span>
                 <div className={styles.threadActions}>
+                  <button
+                    type="button"
+                    className={styles.profileToggleBtn}
+                    onClick={() => setShowMobileProfile(v => !v)}
+                    title="Ver perfil del cliente"
+                  >
+                    👤
+                  </button>
                   {isArchived ? (
                     <button className={`${styles.actionBtn} ${styles.actionReopen}`} onClick={() => dispatch('to_bot')} disabled={updating}>
                       ↩ Reabrir
@@ -1186,6 +1309,51 @@ export default function Conversations() {
                     ⚠️ El cliente no escribe hace {Math.floor(lastClientHours)}h. La ventana de WhatsApp de 24h está por cerrarse — si no responde pronto, los mensajes dejarán de llegar.
                   </div>
                 )}
+                {recordedAudio ? (
+                  /* ---- Preview de nota de voz grabada: escuchar antes de mandar ---- */
+                  <div className={styles.recordPreviewRow}>
+                    <audio className={styles.recordPreviewPlayer} controls src={recordedAudio.url} />
+                    <button
+                      type="button"
+                      className={styles.recordDiscardBtn}
+                      onClick={discardRecordedAudio}
+                      disabled={sending}
+                      title="Descartar grabación"
+                    >
+                      🗑 Descartar
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.replyBtn}
+                      onClick={sendRecordedAudio}
+                      disabled={sending}
+                    >
+                      {sending ? '...' : '📤 Enviar audio'}
+                    </button>
+                  </div>
+                ) : recording ? (
+                  /* ---- Grabando nota de voz ---- */
+                  <div className={styles.recordingRow}>
+                    <span className={styles.recordingDot} />
+                    <span className={styles.recordingTime}>Grabando… {formatRecordTime(recordSeconds)}</span>
+                    <button
+                      type="button"
+                      className={styles.recordCancelBtn}
+                      onClick={cancelRecording}
+                      title="Cancelar grabación"
+                    >
+                      ✕
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.recordStopBtn}
+                      onClick={stopRecording}
+                      title="Cortar grabación"
+                    >
+                      ⏹ Cortar
+                    </button>
+                  </div>
+                ) : (
                 <div className={styles.replyRow}>
                   <div className={styles.replyInputWrap}>
                     {slashSuggestions.length > 0 && (
@@ -1262,10 +1430,20 @@ export default function Conversations() {
                   >
                     📎
                   </button>
+                  <button
+                    type="button"
+                    className={styles.micBtn}
+                    onClick={startRecording}
+                    disabled={sending}
+                    title="Grabar nota de voz"
+                  >
+                    🎙️
+                  </button>
                   <button type="submit" className={styles.replyBtn} disabled={sending || !reply.trim()}>
                     {sending ? '...' : 'Enviar'}
                   </button>
                 </div>
+                )}
               </form>
             ) : (
               /* ---- Bot is handling the conversation ---- */
@@ -1289,8 +1467,20 @@ export default function Conversations() {
 
       {/* ---- Profile Panel ---- */}
       {selected && (
-        <aside className={styles.profilePanel}>
+        <>
+          {showMobileProfile && (
+            <div className={styles.profileBackdrop} onClick={() => setShowMobileProfile(false)} />
+          )}
+          <aside className={`${styles.profilePanel} ${showMobileProfile ? styles.profilePanelOpen : ''}`}>
           <div className={styles.profileHeader}>
+            <button
+              type="button"
+              className={styles.profileCloseBtn}
+              onClick={() => setShowMobileProfile(false)}
+              title="Cerrar"
+            >
+              ✕
+            </button>
             <span className={styles.profileTitle}>Perfil del cliente</span>
           </div>
 
@@ -1377,7 +1567,8 @@ export default function Conversations() {
           ) : (
             <p className={styles.profileEmpty}>Sin perfil aún.</p>
           )}
-        </aside>
+          </aside>
+        </>
       )}
 
       {/* ---- Nueva Conversación Modal ---- */}
