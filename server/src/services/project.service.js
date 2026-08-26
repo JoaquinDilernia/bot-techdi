@@ -7,8 +7,12 @@ const COLLECTION = 'bot-techdi_projects';
 // campo DENTRO de objetos anidados en un array — solo sobre valores
 // primitivos. Se recalcula server-side en cada write, nunca se confía en que
 // el cliente lo mande sincronizado con `contactos`.
+function normalizePhone(phone) {
+  return (phone || '').replace(/\D/g, '');
+}
+
 function buildContactPhones(contactos = []) {
-  return [...new Set(contactos.map(c => c.telefono).filter(Boolean))];
+  return [...new Set(contactos.map(c => normalizePhone(c.telefono)).filter(Boolean))];
 }
 
 export async function getAllProjects() {
@@ -68,7 +72,9 @@ export async function deleteProject(id) {
 // recién creado/migrado).
 export async function findProjectByPhone(phone) {
   const db = getDb();
-  const snap = await db.collection(COLLECTION).where('contactPhones', 'array-contains', phone).limit(1).get();
+  const normalized = normalizePhone(phone);
+  if (!normalized) return null;
+  const snap = await db.collection(COLLECTION).where('contactPhones', 'array-contains', normalized).limit(1).get();
   if (snap.empty) return null;
   return { id: snap.docs[0].id, ...snap.docs[0].data() };
 }

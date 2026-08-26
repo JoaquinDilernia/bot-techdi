@@ -80,15 +80,19 @@ function parseCloseMarker(text) {
 }
 
 function parseTicketMarker(text) {
-  const match = text.match(/\[CREAR_TICKET:({.*?})\]/i);
+  const match = text.match(/\[CREAR_TICKET:\s*(\{[\s\S]*\})\s*\]/i);
   if (!match) return { shouldCreateTicket: false, ticketParams: null, cleanText: text };
   let ticketParams = null;
   try {
     ticketParams = JSON.parse(match[1]);
-  } catch {
+  } catch (err) {
+    console.error('[bot] CREAR_TICKET con JSON inválido, se descarta:', err.message, '—', match[1]);
     ticketParams = null;
   }
-  const cleanText = text.replace(match[0], '').trim();
+  // Sweep de seguridad: si el parseo falló o el marcador quedó parcialmente
+  // capturado, nunca dejar que texto tipo "[CREAR_TICKET:...]" le llegue al
+  // cliente por WhatsApp.
+  const cleanText = text.replace(match[0], '').replace(/\[CREAR_TICKET[\s\S]*?\]/gi, '').trim();
   return { shouldCreateTicket: !!ticketParams, ticketParams, cleanText };
 }
 
@@ -332,7 +336,11 @@ async function processIncomingMessageInternal(msg) {
       // Si no, se busca la última imagen que el cliente mandó en el
       // historial reciente (el historial cargado al principio del turno
       // todavía no incluye el mensaje actual, así que no hay doble conteo).
-      const lastImageMsg = [...history].reverse().find(m => m.role === 'user' && m.mediaType === 'image' && m.mediaId);
+      // Solo se busca en los últimos mensajes del historial — no en toda la
+      // conversación — para no adjuntar una imagen vieja y no relacionada al
+      // ticket (p.ej. una captura de pantalla de hace meses sobre otro tema).
+      const recentHistory = history.slice(-6);
+      const lastImageMsg = [...recentHistory].reverse().find(m => m.role === 'user' && m.mediaType === 'image' && m.mediaId);
       const imageMediaId = (type === 'image' && mediaId) ? mediaId : (lastImageMsg?.mediaId ?? null);
 
       const ticket = await createTicket({
@@ -352,6 +360,11 @@ async function processIncomingMessageInternal(msg) {
       else if (channel === 'instagram') await sendInstagramMessage(from, confirmMsg).catch(() => {});
     } catch (err) {
       console.error('[bot] Error creando ticket:', err.message);
+      const failMsg = 'Che, tuvimos un problema técnico registrando tu ticket. Ya le avisamos al equipo, en breve te contactamos para solucionarlo.';
+      await appendMessage(from, { role: 'assistant', content: failMsg }).catch(() => {});
+      await setUrgentFlag(from, true).catch(() => {});
+      if (channel === 'whatsapp') await sendWhatsAppMessage(from, failMsg).catch(() => {});
+      else if (channel === 'instagram') await sendInstagramMessage(from, failMsg).catch(() => {});
     }
   }
 

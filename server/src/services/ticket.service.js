@@ -76,7 +76,10 @@ export async function updateTicket(id, { titulo, descripcion, prioridad, estado,
   const justResolved = estado === 'resuelto' && beforeData.estado !== 'resuelto';
   if (estado !== undefined) {
     update.estado = estado;
-    if (justResolved) update.resolvedAt = new Date();
+    if (justResolved) {
+      update.resolvedAt = new Date();
+      update.notificationStatus = 'pending';
+    }
   }
 
   await docRef.update(update);
@@ -103,12 +106,21 @@ export async function addComment(id, { autor, texto }) {
 }
 
 async function notifyTicketResolved(ticket) {
+  const db = getDb();
   const templates = await getAllTemplates();
   const approved = templates.find(t => t.name === RESOLVED_TEMPLATE_NAME && t.metaStatus === 'APPROVED');
   if (!approved) {
     console.warn(`[ticket] Plantilla "${RESOLVED_TEMPLATE_NAME}" no existe o no está aprobada en Meta todavía — no se notifica al cliente. Creála desde Plantillas cuando esté lista.`);
+    await db.collection(COLLECTION).doc(ticket.id).update({ notificationStatus: 'no_template' }).catch(() => {});
     return;
   }
-  await sendWhatsAppTemplate(ticket.contactId, RESOLVED_TEMPLATE_NAME, approved.language ?? 'es_AR', [ticket.titulo]);
-  console.log(`[ticket] Notificación de resolución enviada para ticket ${ticket.id}`);
+  try {
+    await sendWhatsAppTemplate(ticket.contactId, RESOLVED_TEMPLATE_NAME, approved.language ?? 'es_AR', [ticket.titulo]);
+    console.log(`[ticket] Notificación de resolución enviada para ticket ${ticket.id}`);
+    await db.collection(COLLECTION).doc(ticket.id).update({ notificationStatus: 'sent' }).catch(() => {});
+  } catch (err) {
+    console.error('[ticket] Error enviando plantilla de resolución:', err.message);
+    await db.collection(COLLECTION).doc(ticket.id).update({ notificationStatus: 'failed' }).catch(() => {});
+    throw err;
+  }
 }

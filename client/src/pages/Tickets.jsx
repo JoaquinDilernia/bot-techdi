@@ -11,8 +11,9 @@ function TicketImage({ mediaId }) {
   return (
     <img
       className={styles.ticketImg}
-      src={`${BASE_URL}/api/conversations/media/${mediaId}?token=${token}`}
+      src={`${BASE_URL}/api/conversations/media/${mediaId}?token=${encodeURIComponent(token)}`}
       alt="Adjunto del ticket"
+      onError={e => { e.target.onerror = null; e.target.replaceWith(Object.assign(document.createElement('span'), { className: styles.imageExpired, textContent: '⚠️ Imagen no disponible (puede haber expirado)' })); }}
     />
   );
 }
@@ -135,7 +136,10 @@ export default function Tickets() {
       <aside className={styles.list}>
         <div className={styles.listHeader}>
           <h1 className={styles.title}>Tickets</h1>
-          <button className={styles.newBtn} onClick={() => setShowNew(true)}>+ Nuevo</button>
+          <div className={styles.headerActions}>
+            <button className={styles.refreshBtn} onClick={load} title="Actualizar">🔄</button>
+            <button className={styles.newBtn} onClick={() => setShowNew(true)}>+ Nuevo</button>
+          </div>
         </div>
         <div className={styles.filters}>
           <select value={filterEstado} onChange={e => setFilterEstado(e.target.value)}>
@@ -211,6 +215,15 @@ export default function Tickets() {
         ) : (
           <div className={styles.ticketDetail}>
             <h2 className={styles.detailTitle}>{selected.titulo}</h2>
+            {selected.estado === 'resuelto' && selected.notificationStatus === 'no_template' && (
+              <div className={styles.notifyWarning}>⚠️ El cliente no fue notificado — falta crear/aprobar la plantilla "ticket_resuelto" en Plantillas.</div>
+            )}
+            {selected.estado === 'resuelto' && selected.notificationStatus === 'failed' && (
+              <div className={styles.notifyWarning}>⚠️ Falló el envío de la notificación al cliente. Revisá los logs del servidor.</div>
+            )}
+            {selected.estado === 'resuelto' && selected.notificationStatus === 'sent' && (
+              <div className={styles.notifyOk}>✓ Cliente notificado por WhatsApp.</div>
+            )}
             <p className={styles.detailDesc}>{selected.descripcion}</p>
 
             <div className={styles.detailRow}>
