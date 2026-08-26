@@ -47,6 +47,13 @@ Ejemplo: "[CERRAR] ¡Con mucho gusto! Si necesitás algo más, escribinos cuando
 Usá [CERRAR] solo cuando estés seguro de que la conversación terminó.`;
 }
 
+function buildTicketInstructions() {
+  return `
+IMPORTANTE — TICKETS DE SOPORTE: Cuando un cliente describe un problema técnico, un bug, o algo que no funciona bien en un desarrollo/sistema que TechDI le hizo, conversá primero para juntar un título breve y una descripción clara del problema (y si es evidente qué tan urgente es, mejor — si no, no importa). Antes o junto con el marcador, avisale EXPLÍCITAMENTE en tu texto que le estás generando un ticket de soporte — nunca lo hagas en silencio. Recién ahí, en una línea separada (invisible para el cliente), agregá:
+[CREAR_TICKET:{"titulo":"...","descripcion":"...","prioridad":"baja|media|alta|urgente"}]
+El JSON tiene que ser válido y tener exactamente esas 3 claves. Si todavía no tenés información suficiente para un título/descripción claros, seguí preguntando antes de usar el marcador — nunca lo generes con datos vacíos o inventados.`;
+}
+
 function callAnthropicAPIOnce(payload) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(payload);
@@ -154,6 +161,7 @@ Nunca inventás información sobre servicios, precios, plazos, procesos o links 
 
   let prompt = `Sos el asistente virtual de ${businessName}. Tu nombre es ${botName}.\n${personality}`;
   prompt += buildEscalationInstructions(areas);
+  prompt += buildTicketInstructions();
   if (knowledgeBase) {
     prompt += `\n\n--- INFORMACIÓN DE LA EMPRESA ---\n${knowledgeBase}`;
     prompt += `\n\nIMPORTANTE — USO DE ESTA INFORMACIÓN: Es TU ÚNICA fuente de verdad sobre servicios, precios, procesos y políticas. Antes de responder CUALQUIER consulta, revisá esta sección completa primero. Si algo aplica, compartilo directamente aunque el cliente no lo pida explícitamente. Si la consulta no está cubierta acá, NUNCA inventes ni supongas una respuesta — decí que no tenés esa info y ofrecé derivar a alguien del equipo.`;
