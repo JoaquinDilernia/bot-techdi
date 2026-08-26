@@ -18,6 +18,7 @@ import costsRoutes from './routes/costs.routes.js';
 import { initFirebase } from './services/firebase.service.js';
 import areaRoutes from './routes/area.routes.js';
 import projectRoutes from './routes/project.routes.js';
+import ticketRoutes from './routes/ticket.routes.js';
 import { seedAgentsIfNeeded } from './services/auth.service.js';
 import { seedAreasIfNeeded } from './services/area.service.js';
 import { requireAuth, requireAtLeastAtencionCliente } from './middleware/requireAuth.js';
@@ -80,6 +81,9 @@ app.use('/api/areas',         requireAuth, areaRoutes);
 // alta/baja/edición requiere al menos atencion_cliente (restringido dentro
 // del propio router, igual criterio que /api/areas).
 app.use('/api/projects',      requireAuth, projectRoutes);
+// Sin restricción de rol adicional — cualquier agente autenticado puede ver,
+// crear y comentar tickets (ver Global Constraints del plan).
+app.use('/api/tickets',       requireAuth, ticketRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
