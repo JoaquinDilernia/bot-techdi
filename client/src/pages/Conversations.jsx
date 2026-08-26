@@ -391,6 +391,7 @@ export default function Conversations() {
   const audioChunksRef = useRef([]);
   const mediaStreamRef = useRef(null);
   const recordTimerRef = useRef(null);
+  const appliedDeepLinkRef = useRef(false);
 
   const labelMap = Object.fromEntries(allLabels.map(l => [l.name, l.color]));
   const myId = agent?.id;
@@ -420,13 +421,21 @@ export default function Conversations() {
 
   // Deep-link: si se navegó con ?contact=<id> (p.ej. desde "Ver conversación"
   // en un ticket), selecciona esa conversación en cuanto la lista cargue.
+  // Se aplica una sola vez (appliedDeepLinkRef): `conversations` cambia de
+  // referencia en cada poll de 10s aunque el contenido sea el mismo, así que
+  // sin este guard el efecto reasignaría la selección en cada poll y pelearía
+  // contra una navegación manual posterior del agente.
   useEffect(() => {
+    if (appliedDeepLinkRef.current) return;
     if (!conversations.length) return;
     const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
     const contactParam = params.get('contact');
     if (!contactParam) return;
     const match = conversations.find(c => c.id === contactParam || c.contactId === contactParam);
-    if (match) setSelected(match);
+    if (match) {
+      setSelected(match);
+      appliedDeepLinkRef.current = true;
+    }
   }, [conversations]);
 
   useEffect(() => {
