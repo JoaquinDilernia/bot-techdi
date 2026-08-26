@@ -418,6 +418,17 @@ export default function Conversations() {
     return () => clearInterval(pollConvRef.current);
   }, []);
 
+  // Deep-link: si se navegó con ?contact=<id> (p.ej. desde "Ver conversación"
+  // en un ticket), selecciona esa conversación en cuanto la lista cargue.
+  useEffect(() => {
+    if (!conversations.length) return;
+    const params = new URLSearchParams(window.location.hash.split('?')[1] ?? '');
+    const contactParam = params.get('contact');
+    if (!contactParam) return;
+    const match = conversations.find(c => c.id === contactParam || c.contactId === contactParam);
+    if (match) setSelected(match);
+  }, [conversations]);
+
   useEffect(() => {
     const term = search.trim();
     if (term.length < 2) {
