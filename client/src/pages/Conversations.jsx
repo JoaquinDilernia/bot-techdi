@@ -160,9 +160,12 @@ async function downloadMedia(url, suggestedExt = 'jpg') {
 
 const REPLY_ROLE_LABELS = { user: 'Cliente', admin: 'Agente', assistant: 'Bot' };
 
-function MessageBubble({ msg, onRetry, contactId }) {
+function MessageBubble({ msg, onRetry, contactId, nameMap = {} }) {
   const isUser = msg.role === 'user';
   const isAdmin = msg.role === 'admin';
+  // Mensajes viejos no tienen `sentBy` (se agregó después) — quedan mostrando
+  // "Agente" genérico en vez de romper o mostrar un nombre incorrecto.
+  const senderLabel = isUser ? 'Cliente' : isAdmin ? (nameMap[msg.sentBy] ?? 'Agente') : 'Bot';
   const token = localStorage.getItem('techdi_token');
   const mediaProxyUrl = msg.mediaId
     ? `${BASE_URL}/api/conversations/media/${msg.mediaId}?token=${encodeURIComponent(token ?? '')}`
@@ -259,7 +262,7 @@ function MessageBubble({ msg, onRetry, contactId }) {
         )}
       </div>
       <span className={styles.msgMeta}>
-        {isUser ? 'Cliente' : isAdmin ? 'Agente' : 'Bot'}
+        {senderLabel}
         {msg.timestamp ? ` · ${formatDateTime(msg.timestamp)}` : ''}
         {isAdmin && <MsgStatusIcon msgStatus={msg.msgStatus} />}
       </span>
@@ -1193,6 +1196,7 @@ export default function Conversations() {
                       msg={msg}
                       onRetry={canRetry ? handleRetry : null}
                       contactId={selected.id}
+                      nameMap={nameMap}
                     />
                   );
                 })
