@@ -28,6 +28,7 @@ const NAV_ITEMS = [
   { to: '/stats',         label: 'Estadísticas',    icon: IconChart,      minRole: 'atencion_cliente' },
   { to: '/knowledge',     label: 'Knowledge Base',  icon: IconBook,       minRole: 'atencion_cliente' },
   { to: '/areas',         label: 'Áreas',           icon: IconDepartment, minRole: 'atencion_cliente' },
+  { to: '/proyectos',     label: 'Proyectos',       icon: IconFolder },
   { to: '/labels',        label: 'Etiquetas',       icon: IconTag,        minRole: 'atencion_cliente' },
   { to: '/quick-replies', label: 'Resp. Rápidas',   icon: IconZap,        minRole: 'atencion_cliente' },
   { to: '/templates',     label: 'Plantillas',      icon: IconTemplate,   minRole: 'atencion_cliente' },
@@ -206,6 +207,14 @@ function IconDepartment({ className }) {
     <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
       <polyline points="9 22 9 12 15 12 15 22" />
+    </svg>
+  );
+}
+
+function IconFolder({ className }) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
     </svg>
   );
 }

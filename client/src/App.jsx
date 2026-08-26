@@ -16,6 +16,7 @@ import Templates     from './pages/Templates.jsx';
 import Costs         from './pages/Costs.jsx';
 import Areas         from './pages/Areas.jsx';
 import Users         from './pages/Users.jsx';
+import Proyectos     from './pages/Proyectos.jsx';
 
 export default function App() {
   return (
@@ -51,6 +52,7 @@ function AppRoutes() {
           <Route path="costs"         element={<Costs />} />
           <Route path="areas"         element={<Areas />} />
           <Route path="users"         element={<Users />} />
+          <Route path="proyectos"     element={<Proyectos />} />
         </Route>
       </Routes>
   );
