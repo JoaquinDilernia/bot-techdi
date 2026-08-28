@@ -2,8 +2,11 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
+import cron from 'node-cron';
 
 import webhookRoutes from './routes/webhook.routes.js';
+import publicStatsRoutes from './routes/publicStats.routes.js';
+import { computeResolvedByBotTotals } from './services/publicStats.service.js';
 import knowledgeRoutes from './routes/knowledge.routes.js';
 import conversationRoutes from './routes/conversation.routes.js';
 import configRoutes from './routes/config.routes.js';
@@ -31,11 +34,24 @@ initFirebase();
 seedAgentsIfNeeded().catch(err => console.error('[seed] Error seeding agents:', err));
 seedAreasIfNeeded().catch(err => console.error('[seed] Error seeding areas:', err));
 
+// Contador de "resueltos por el bot" para la landing pública — se calcula al
+// arrancar y después una vez al día. Vive acá porque los 4 bots comparten el
+// mismo proyecto de Firebase, así que esta conexión ya puede leer los 4.
+computeResolvedByBotTotals().catch(err => console.error('[public-stats] Error inicial:', err.message));
+cron.schedule('0 9 * * *', () => {
+  computeResolvedByBotTotals().catch(err => console.error('[cron] public-stats error:', err.message));
+});
+
 // Middleware
 const allowedOrigins = [
   'http://localhost:5173',
   ...(process.env.FRONTEND_URL ? process.env.FRONTEND_URL.split(',').map(s => s.trim()) : []),
 ].filter(Boolean);
+
+// Público, CORS abierto — se registra antes del cors restrictivo de abajo
+// para que una request a este path nunca pase por el chequeo de origin.
+app.use('/api/public-stats', cors(), publicStatsRoutes);
+
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin || allowedOrigins.includes(origin)) cb(null, true);
