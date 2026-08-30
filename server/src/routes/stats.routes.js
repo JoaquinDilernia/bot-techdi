@@ -102,7 +102,7 @@ router.get('/', async (req, res) => {
     const startMs = start.getTime();
     const endMs = end.getTime();
 
-    const [snap, agentsSnap, areasSnap, urgentSnap] = await Promise.all([
+    const [snap, agentsSnap, areasSnap, urgentSnap, awaitingSnap] = await Promise.all([
       db.collection('bot-techdi_conversations')
         .where('updatedAt', '>=', startTs)
         .where('updatedAt', '<=', endTs)
@@ -110,6 +110,7 @@ router.get('/', async (req, res) => {
       db.collection('bot-techdi_agents').get(),
       db.collection('bot-techdi_areas').get(),
       db.collection('bot-techdi_conversations').where('urgent', '==', true).get(),
+      db.collection('bot-techdi_conversations').where('status', '==', 'escalated').get(),
     ]);
 
     const conversations = snap.docs.map(d => ({ id: d.id, ...d.data() }));
@@ -124,6 +125,17 @@ router.get('/', async (req, res) => {
       .map(d => d.data())
       .filter(c => c.status !== 'resolved' && c.status !== 'bot_archived')
       .length;
+
+    // Esperando agente: cuántas conversaciones escaladas siguen sin resolver
+    // AHORA MISMO, sin acotar por período — una conversación derivada hace
+    // días y sin responder todavía debe seguir contando como backlog, aunque
+    // no tenga actividad "de hoy".
+    const awaitingDocs = awaitingSnap.docs.map(d => d.data());
+    const awaitingAgent = awaitingDocs.length;
+    const now = new Date();
+    const oldestAwaitingMin = awaitingDocs.length
+      ? Math.max(...awaitingDocs.map(c => diffMin(c.escalatedAt, now) ?? 0))
+      : null;
 
     // --- Buckets ---
     const agentBuckets = { bot: { handled: 0, resolved: 0 } };
@@ -155,21 +167,30 @@ router.get('/', async (req, res) => {
       const rawStatus = conv.status ?? 'bot';
       const status    = rawStatus === 'urgent' ? 'bot' : rawStatus; // legado: 'urgent' era status, ahora es flag
       const channel   = conv.channel ?? 'whatsapp';
-      const assignee  = conv.assignedTo ?? 'bot';
+      const isClosed  = status === 'resolved' || status === 'bot_archived';
+      // Una conversación cerrada casi siempre tiene assignedTo en null (las
+      // acciones de cierre lo limpian), así que atribuir por el asignado
+      // ACTUAL la mandaría siempre al balde "Bot", aunque la haya cerrado un
+      // agente o un área. `resolvedBy` guarda quién la tenía al momento del
+      // cierre — se usa solo para conversaciones ya cerradas, con fallback
+      // al asignado actual para datos viejos sin ese campo.
+      const assignee = isClosed
+        ? (conv.resolvedBy !== undefined ? (conv.resolvedBy ?? 'bot') : (conv.assignedTo ?? 'bot'))
+        : (conv.assignedTo ?? 'bot');
 
       if (status in byStatus)   byStatus[status]++;
       if (channel in byChannel) byChannel[channel]++;
 
       const bucket = agentBuckets[assignee] ?? agentBuckets['bot'];
       bucket.handled++;
-      if (status === 'resolved' || status === 'bot_archived') bucket.resolved++;
+      if (isClosed) bucket.resolved++;
 
-      // Area breakdown — resolver el área real aunque el asignado
-      // actual sea un agente puntual que tomó un caso derivado (take_over)
+      // Area breakdown — resolver el área real aunque el asignado (actual o
+      // al cierre) sea un agente puntual que tomó un caso derivado (take_over)
       const resolvedArea = resolveAreaForAssignee(assignee, areaIds, agentsByEmail);
       if (resolvedArea && areaBuckets[resolvedArea]) {
         areaBuckets[resolvedArea].handled++;
-        if (status === 'resolved' || status === 'bot_archived') areaBuckets[resolvedArea].resolved++;
+        if (isClosed) areaBuckets[resolvedArea].resolved++;
       }
 
       // Escalación: sólo las ocurridas dentro del rango
@@ -287,6 +308,8 @@ router.get('/', async (req, res) => {
       botResolutionRate: botHandledPct,
       pending,
       urgentCount,
+      awaitingAgent,
+      oldestAwaitingMin,
       escalatedCount,
       escalationRate,
       avgFirstResponseMin,
