@@ -18,6 +18,7 @@ import { getActiveAreas } from './area.service.js';
 import { findProjectByPhone } from './project.service.js';
 import { createTicket } from './ticket.service.js';
 import { getDb } from './firebase.service.js';
+import { toWaContactId } from './phone.js';
 
 const URGENCY_KEYWORDS = [
   /urgente/i, /urgencia/i, /reclamo/i, /estafa/i, /fraude/i,
@@ -118,6 +119,16 @@ function toWhatsAppBold(text) {
 const contactLocks = new Map();
 
 export function processIncomingMessage(msg) {
+  // Canonicalizar el teléfono ni bien entra. Meta manda el "from" de los
+  // números argentinos a veces con el 9 de celular y a veces sin él; si no
+  // lo normalizamos acá, la respuesta del cliente cae en un documento de
+  // conversación distinto al de la plantilla que le mandamos y se ve como
+  // dos chats separados. Solo aplica a WhatsApp — el "from" de Instagram
+  // es un ID de usuario, no un teléfono.
+  if (msg.channel === 'whatsapp' && msg.from) {
+    const canonical = toWaContactId(msg.from);
+    if (canonical) msg = { ...msg, from: canonical };
+  }
   const contactId = msg.from;
   const previous = contactLocks.get(contactId) ?? Promise.resolve();
   const current = previous
