@@ -22,6 +22,8 @@ import { initFirebase } from './services/firebase.service.js';
 import areaRoutes from './routes/area.routes.js';
 import projectRoutes from './routes/project.routes.js';
 import ticketRoutes from './routes/ticket.routes.js';
+import campaignRoutes from './routes/campaign.routes.js';
+import redirectRoutes from './routes/redirect.routes.js';
 import { seedAgentsIfNeeded } from './services/auth.service.js';
 import { seedAreasIfNeeded } from './services/area.service.js';
 import { requireAuth, requireAtLeastAtencionCliente } from './middleware/requireAuth.js';
@@ -68,6 +70,9 @@ app.use(express.json());
 // Routes (public)
 app.use('/api/webhook', webhookRoutes);
 app.use('/api/auth', authRoutes);
+// Redirect de links cortos de difusiones — lo clickea el destinatario final
+// desde WhatsApp, no un agente logueado, así que va sin requireAuth.
+app.use('/r', redirectRoutes);
 
 // Routes (protected)
 // Operador can access: conversations (filtered), labels
@@ -100,6 +105,7 @@ app.use('/api/projects',      requireAuth, projectRoutes);
 // Sin restricción de rol adicional — cualquier agente autenticado puede ver,
 // crear y comentar tickets (ver Global Constraints del plan).
 app.use('/api/tickets',       requireAuth, ticketRoutes);
+app.use('/api/campaigns',     requireAuth, requireAtLeastAtencionCliente, campaignRoutes);
 
 // Health check
 app.get('/health', (req, res) => {
