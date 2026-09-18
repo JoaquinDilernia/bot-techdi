@@ -106,6 +106,31 @@ function mapCustomerDoc(doc) {
   };
 }
 
+// Cache en memoria: el panel admin pide esta lista COMPLETA en cada carga y
+// en cada cambio de filtro de la pantalla "Clientes" (los filtros se aplican
+// acá, en JS, no en la query de Firestore). Sin cache eso es un scan
+// completo de la colección de contactos por click — en BOT-ALTORANCHO esto
+// generó 1.25M lecturas/día con 10k+ contactos. No se invalida con el touch
+// de `lastContactAt` en `getOrCreateCustomer` (pasa en cada mensaje entrante
+// — invalidar ahí anularía el cache en la práctica); sí se invalida en las
+// altas/bajas/ediciones manuales desde el panel, donde 60s de demora es
+// imperceptible.
+let _customersCache = { at: 0, docs: null };
+const CUSTOMERS_CACHE_MS = 60 * 1000;
+
+export function invalidateCustomersCache() { _customersCache = { at: 0, docs: null }; }
+
+async function fetchAllCustomerDocs() {
+  if (_customersCache.docs && Date.now() - _customersCache.at < CUSTOMERS_CACHE_MS) {
+    return _customersCache.docs;
+  }
+  const db = getDb();
+  const snap = await db.collection(COLLECTION).get();
+  const docs = snap.docs.map(mapCustomerDoc);
+  _customersCache = { at: Date.now(), docs };
+  return docs;
+}
+
 /**
  * @param {object} filters
  * @param {string} [filters.q]        busca en nombre, contactId/teléfono y email
@@ -113,9 +138,7 @@ function mapCustomerDoc(doc) {
  * @param {string} [filters.channel]  'whatsapp' | 'instagram'
  */
 export async function listCustomers(filters = {}) {
-  const db = getDb();
-  const snap = await db.collection(COLLECTION).get();
-  let docs = snap.docs.map(mapCustomerDoc);
+  let docs = await fetchAllCustomerDocs();
 
   if (filters.channel) docs = docs.filter(c => c.channel === filters.channel);
   if (filters.tags?.length) {
@@ -131,10 +154,9 @@ export async function listCustomers(filters = {}) {
 }
 
 export async function listAllTags() {
-  const db = getDb();
-  const snap = await db.collection(COLLECTION).get();
+  const docs = await fetchAllCustomerDocs();
   const set = new Set();
-  snap.docs.forEach(doc => (doc.data().tags ?? []).forEach(t => set.add(t)));
+  docs.forEach(c => (c.tags ?? []).forEach(t => set.add(t)));
   return [...set].sort((a, b) => norm(a).localeCompare(norm(b)));
 }
 
@@ -168,6 +190,7 @@ export async function createCustomer({ contactId, channel, contactName, email, t
     updatedAt: new Date(),
   };
   await docRef.set(customer);
+  invalidateCustomersCache();
   return { id: contactId, ...customer };
 }
 
@@ -179,12 +202,14 @@ export async function updateCustomer(contactId, patch) {
   if (patch.tags !== undefined) update.tags = Array.isArray(patch.tags) ? patch.tags : [];
   if (patch.agentNotes !== undefined) update.agentNotes = patch.agentNotes ?? '';
   await db.collection(COLLECTION).doc(contactId).update(update);
+  invalidateCustomersCache();
   return getCustomerProfile(contactId);
 }
 
 export async function deleteCustomer(contactId) {
   const db = getDb();
   await db.collection(COLLECTION).doc(contactId).delete();
+  invalidateCustomersCache();
 }
 
 // ─────────────────────────── Import / export CSV ──────────────────────────
@@ -292,6 +317,7 @@ export async function importCustomersCsv(rows, { normalizePhone } = {}) {
     }
   }
 
+  invalidateCustomersCache();
   return { created, updated, skipped, errors };
 }
 
