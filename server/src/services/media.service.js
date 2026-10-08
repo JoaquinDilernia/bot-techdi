@@ -76,7 +76,7 @@ async function toOggOpus(buffer) {
     const proc = spawn(ffmpegPath, [
       '-hide_banner', '-loglevel', 'error',
       '-i', 'pipe:0',
-      '-vn', '-ac', '1', '-c:a', 'libopus', '-b:a', '32k', '-application', 'voip',
+      '-vn', '-map_metadata', '-1', '-ac', '1', '-ar', '48000', '-c:a', 'libopus', '-b:a', '32k', '-application', 'voip',
       '-f', 'ogg', 'pipe:1',
     ]);
     const chunks = [];
@@ -129,17 +129,19 @@ export async function prepareWhatsAppMedia({ buffer, mimetype, originalname, isV
   }
 
   if (mime.startsWith('audio/')) {
-    // Notas de voz grabadas en el panel → siempre ogg/opus, así le llegan al
-    // cliente como nota de voz y no como "archivo de audio". Un audio subido
-    // como archivo (mp3, m4a…) se respeta tal cual si WhatsApp lo acepta.
-    const needsConversion = isVoiceNote ? mime !== 'audio/ogg' : !WA_AUDIO.has(mime);
+    // Notas de voz grabadas en el panel → SIEMPRE pasan por ffmpeg, aunque ya
+    // vengan en ogg: el ogg que graba MediaRecorder (Chrome nuevo, Firefox)
+    // sale sin cabeceras completas y Meta lo rechaza después de aceptarlo
+    // (131053 "on processing it is of type application/octet-stream").
+    // Un audio subido como archivo (mp3, m4a…) se respeta tal cual si WhatsApp lo acepta.
+    const needsConversion = isVoiceNote || !WA_AUDIO.has(mime);
     if (needsConversion) {
       try {
         const ogg = await toOggOpus(buffer);
         return { buffer: ogg, mimeType: 'audio/ogg', waType: 'audio', fileName: fileName.replace(/\.[^.]+$/, '') + '.ogg' };
       } catch (err) {
         console.error('[media] Falló la conversión de audio a ogg:', err.message);
-        if (!WA_AUDIO.has(mime)) {
+        if (isVoiceNote || !WA_AUDIO.has(mime)) {
           throw new MediaRejectedError('No se pudo convertir el audio a un formato que acepte WhatsApp. Probá grabarlo de nuevo o mandarlo como MP3.');
         }
       }
