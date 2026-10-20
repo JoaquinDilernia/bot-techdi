@@ -19,6 +19,7 @@ import { findProjectByPhone } from './project.service.js';
 import { createTicket } from './ticket.service.js';
 import { getDb } from './firebase.service.js';
 import { toWaContactId } from './phone.js';
+import { isWithinBusinessHoursAt } from './businessHours.js';
 
 const URGENCY_KEYWORDS = [
   /urgente/i, /urgencia/i, /reclamo/i, /estafa/i, /fraude/i,
@@ -27,18 +28,7 @@ const URGENCY_KEYWORDS = [
 
 // Returns true if current Argentina time is within business hours
 export function isWithinBusinessHours(botConfig = {}) {
-  const tz = 'America/Argentina/Buenos_Aires';
-  const now = new Date(new Date().toLocaleString('en-US', { timeZone: tz }));
-  const day = now.getDay(); // 0=Sun, 1=Mon ... 6=Sat
-  const hour = now.getHours();
-  const minute = now.getMinutes();
-  const timeMin = hour * 60 + minute;
-
-  const startH = botConfig.businessHoursStart ?? 9;
-  const endH   = botConfig.businessHoursEnd   ?? 18;
-  const days   = botConfig.businessDays        ?? [1, 2, 3, 4, 5]; // lun-vie
-
-  return days.includes(day) && timeMin >= startH * 60 && timeMin < endH * 60;
+  return isWithinBusinessHoursAt(new Date(), botConfig);
 }
 
 function buildEscalationMessage(areaName, botConfig = {}) {

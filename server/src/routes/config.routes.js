@@ -32,6 +32,7 @@ router.put('/', requireAtLeastAtencionCliente, async (req, res) => {
 function getDefaultConfig() {
   return {
     botName: 'Asistente',
+    brandColor: '#0f766e',
     botPersonality: `Respondés de forma amigable, natural y cercana — como lo haría una persona real del equipo de TechDI.\nUsás un tono cálido y profesional. Nunca robótico ni genérico.\nEscribís en español rioplatense (vos, che, etc.) con claridad.\nSi no sabés algo, lo decís honestamente y ofrecés derivar a una persona.\nNunca inventás información sobre servicios, precios, plazos, procesos o links — solo usás los datos que te den. Si algo no está en la información que tenés, lo decís honestamente en vez de inventar o suponer.`,
     welcomeMessage: '¡Hola! Soy el asistente de TechDI 👋 ¿En qué puedo ayudarte?',
     offHoursMessage: 'Hola! En este momento estamos fuera de horario, pero te respondemos a la brevedad.',
