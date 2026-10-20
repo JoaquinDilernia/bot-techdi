@@ -1,0 +1,297 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Conversaciones — direcciones v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700;12..96,800&family=Onest:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, sans-serif; background: #e9e7e3; color: #222; padding: 32px 24px 80px; }
+  .wrap { max-width: 1220px; margin: 0 auto; }
+  h1 { font-size: 22px; font-weight: 600; margin-bottom: 6px; }
+  .lead { color: #555; font-size: 14px; max-width: 820px; line-height: 1.5; margin-bottom: 28px; }
+  .block { margin-bottom: 48px; }
+  .block > h2 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .block > p.why { font-size: 13px; color: #555; margin-bottom: 14px; max-width: 900px; line-height: 1.5; }
+  .pick { cursor: pointer; border: 2px solid transparent; border-radius: 14px; padding: 8px; }
+  .pick:hover { border-color: #bbb; } .pick.selected { border-color: #222; }
+  .tag { display:inline-block; font-size:11px; font-weight:600; letter-spacing:.06em; background:#222; color:#fff; padding:3px 8px; border-radius:4px; margin-right:8px; }
+  .screen { display:flex; height: 590px; border-radius: 12px; overflow:hidden; box-shadow: 0 14px 50px rgba(0,0,0,.14); font-size: 12.5px; }
+  .ell { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  svg { display:block; }
+
+  /* robot face (rasgo de producto) */
+  .bot { display:inline-grid; place-items:center; border-radius: 50%; flex-shrink:0; position:relative; }
+  .bot::before, .bot::after { content:''; position:absolute; top:36%; width:13%; height:26%; border-radius:99px; background: currentColor; }
+  .bot::before { left:31%; } .bot::after { right:31%; }
+
+  /* ================= 1 — WHATSAPP NATIVO ================= */
+  .w { font-family: Figtree, sans-serif; background:#fff; color:#111b21; --brand:#0f766e; }
+  .w .rail { width:58px; background:#0f2a2a; display:flex; flex-direction:column; align-items:center; padding:14px 0; gap:14px; }
+  .w .rail i { width:22px; height:22px; border-radius:6px; background:#ffffff22; display:block; }
+  .w .rail i.logo { width:32px; height:32px; border-radius:9px; background: var(--brand); margin-bottom:8px; }
+  .w .rail i.on { background:#fff; }
+  .w .list { width: 300px; border-right:1px solid #e9edef; display:flex; flex-direction:column; }
+  .w .lh { padding: 16px 16px 10px; } .w .lh h3 { font-size:19px; font-weight:800; letter-spacing:-.3px; }
+  .w .search { margin: 8px 0 10px; background:#f0f2f5; border-radius:9px; padding:8px 12px; color:#667781; }
+  .w .chips { display:flex; gap:6px; flex-wrap:wrap; }
+  .w .chips span { padding:4px 10px; border-radius:99px; background:#f0f2f5; color:#54656f; font-weight:600; font-size:11.5px; }
+  .w .chips span.on { background:#d9fdd3; color:#0b6b3a; }
+  .w .chips em { font-style:normal; background:#e8473f; color:#fff; border-radius:99px; padding:0 6px; margin-left:4px; font-size:10.5px; }
+  .w .it { display:flex; gap:11px; padding: 11px 16px; border-top:1px solid #f0f2f5; align-items:center; }
+  .w .it.on { background:#f0f2f5; }
+  .w .av { width:42px; height:42px; border-radius:50%; display:grid; place-items:center; font-weight:700; color:#fff; flex-shrink:0; position:relative; }
+  .w .av sub { position:absolute; right:-2px; bottom:-2px; width:16px; height:16px; border-radius:50%; border:2px solid #fff; background:#25d366; }
+  .w .av sub.ig { background: linear-gradient(45deg,#f58529,#dd2a7b,#8134af); }
+  .w .it .b { flex:1; min-width:0; } .w .it .t { display:flex; justify-content:space-between; } .w .it .t b { font-weight:700; }
+  .w .it .t small { color:#667781; font-size:11px; } .w .it .t small.late { color:#e8473f; font-weight:700; }
+  .w .it p { color:#667781; } .w .it .who { display:flex; gap:5px; margin-top:4px; align-items:center; }
+  .w .it .who span { font-size:10.5px; font-weight:600; padding:1px 7px; border-radius:99px; }
+  .w .s-bot { background:#e0f2f1; color:#0f766e; } .w .s-wait { background:#fdecea; color:#c0392b; } .w .s-ag { background:#ede9fe; color:#6d28d9; } .w .s-lb { background:#fff4d6; color:#9a6a00; }
+  .w .chat { flex:1; display:flex; flex-direction:column; min-width:0;
+     background:#efeae2 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cg fill='none' stroke='%23d8d1c4' stroke-width='1.2'%3E%3Ccircle cx='14' cy='16' r='5'/%3E%3Cpath d='M50 10l6 6-6 6'/%3E%3Crect x='30' y='48' width='12' height='9' rx='2'/%3E%3Cpath d='M64 52c4 0 6 3 6 6'/%3E%3Cpath d='M8 60l6-4 4 6'/%3E%3C/g%3E%3C/svg%3E"); }
+  .w .ch { background:#fff; padding: 10px 16px; display:flex; align-items:center; gap:11px; border-bottom:1px solid #e9edef; }
+  .w .ch .b { flex:1; } .w .ch b { font-weight:700; font-size:14px; } .w .ch p { color:#667781; font-size:11.5px; }
+  .w .ch .ic { width:30px; height:30px; border-radius:8px; background:#f0f2f5; }
+  .w .state { margin: 10px auto 4px; background:#fff; border-radius:99px; padding:6px 8px 6px 12px; display:flex; align-items:center; gap:10px; box-shadow:0 1px 2px #0001; font-weight:600; }
+  .w .state .bot { width:22px; height:22px; background: var(--brand); color:#fff; }
+  .w .state button { border:0; background:#111b21; color:#fff; border-radius:99px; padding:5px 12px; font: inherit; font-weight:700; }
+  .w .msgs { flex:1; padding: 8px 40px; display:flex; flex-direction:column; gap:6px; overflow:hidden; }
+  .w .m { max-width: 62%; padding: 7px 10px 6px; border-radius: 9px; background:#fff; box-shadow:0 1px .5px #0002; line-height:1.38; }
+  .w .m small { display:block; text-align:right; color:#667781; font-size:10px; margin-top:2px; }
+  .w .m.out { align-self:flex-end; background:#d9fdd3; }
+  .w .m.out .by { display:flex; gap:5px; align-items:center; font-size:10.5px; font-weight:700; color: var(--brand); margin-bottom:2px; }
+  .w .m.out .by .bot { width:14px; height:14px; background: var(--brand); color:#d9fdd3; }
+  .w .m.ag .by { color:#6d28d9; }
+  .w .day { align-self:center; background:#fff; border-radius:7px; padding:3px 10px; font-size:11px; color:#54656f; box-shadow:0 1px .5px #0001; }
+  .w .evt { align-self:center; background:#fff8c5; border-radius:7px; padding:4px 10px; font-size:11px; color:#5c4a00; }
+  .w .comp { background:#f0f2f5; padding: 10px 14px; }
+  .w .qr { display:flex; gap:6px; margin-bottom:8px; } .w .qr span { background:#fff; border:1px solid #d1d7db; border-radius:99px; padding:3px 10px; font-size:11px; color:#54656f; }
+  .w .inp { display:flex; gap:10px; align-items:center; } .w .inp div { flex:1; background:#fff; border-radius:9px; padding:9px 12px; color:#667781; }
+  .w .inp i { width:22px; height:22px; border-radius:50%; background:#c6ced3; display:block; } .w .inp i.send { width:34px; height:34px; background: var(--brand); }
+  .w .side { width: 250px; background:#fff; border-left:1px solid #e9edef; padding: 16px; display:flex; flex-direction:column; gap:12px; }
+  .w .side .pf { text-align:center; } .w .side .pf .av { width:64px; height:64px; margin: 0 auto 6px; font-size:22px; }
+  .w .side h4 { font-size:11px; color:#667781; font-weight:600; margin-bottom:4px; }
+  .w .sum { background:#e0f2f1; border-radius:10px; padding:10px; line-height:1.4; color:#134e4a; }
+  .w .lbls span { display:inline-block; font-size:11px; font-weight:600; padding:2px 8px; border-radius:99px; margin:0 4px 4px 0; }
+  .w .note { background:#fffbea; border:1px solid #f3e3a3; border-radius:8px; padding:8px; color:#6b5800; }
+
+  /* ================= 2 — EL BOT ES UN PERSONAJE ================= */
+  .p { font-family: Figtree, sans-serif; background:#fbf7f1; color:#2a2118; --brand:#e8553d; }
+  .p .rail { width:200px; background:#fbf7f1; border-right:1px solid #eadfce; padding: 16px 12px; }
+  .p .logo { display:flex; align-items:center; gap:9px; font-family:'Bricolage Grotesque'; font-weight:800; font-size:17px; margin: 0 6px 18px; }
+  .p .logo .bot { width:30px; height:30px; background: var(--brand); color:#fff; }
+  .p .nav div { padding: 7px 10px; border-radius:10px; color:#7a6a58; font-weight:600; display:flex; justify-content:space-between; }
+  .p .nav .on { background:#2a2118; color:#fbf7f1; } .p .nav em { font-style:normal; background: var(--brand); color:#fff; border-radius:99px; padding:0 7px; font-size:11px; }
+  .p .list { width: 290px; background:#fff; border-right:1px solid #eadfce; display:flex; flex-direction:column; }
+  .p .lh { padding: 16px; } .p .lh h3 { font-family:'Bricolage Grotesque'; font-size:22px; font-weight:800; letter-spacing:-.5px; }
+  .p .tabs { display:grid; grid-template-columns: repeat(3,1fr); background:#f4ece0; border-radius:12px; padding:3px; margin-top:10px; }
+  .p .tabs span { text-align:center; padding:6px 0; border-radius:9px; font-weight:700; color:#7a6a58; font-size:11.5px; }
+  .p .tabs span.on { background:#fff; color:#2a2118; box-shadow: 0 1px 3px #0001; }
+  .p .it { display:flex; gap:10px; padding: 11px 16px; align-items:center; border-left: 3px solid transparent; }
+  .p .it.on { background:#fff6ee; border-left-color: var(--brand); }
+  .p .av { width:40px; height:40px; border-radius:14px; display:grid; place-items:center; font-weight:800; flex-shrink:0; font-family:'Bricolage Grotesque'; }
+  .p .it .b { flex:1; min-width:0; } .p .it .t { display:flex; justify-content:space-between; } .p .it .t b { font-weight:700; }
+  .p .it p { color:#8a7a68; }
+  .p .wait { font-size:10.5px; font-weight:800; color:#fff; background: var(--brand); border-radius:99px; padding:1px 7px; }
+  .p .mini { display:flex; align-items:center; gap:4px; font-size:10.5px; font-weight:600; color:#8a7a68; margin-top:3px; }
+  .p .mini .bot { width:13px; height:13px; background:#2a2118; color:#fff; }
+  .p .chat { flex:1; display:flex; flex-direction:column; min-width:0; }
+  .p .ch { padding: 12px 20px; display:flex; align-items:center; gap:12px; border-bottom:1px solid #eadfce; background:#fff; }
+  .p .ch .b { flex:1; } .p .ch b { font-family:'Bricolage Grotesque'; font-weight:800; font-size:16px; } .p .ch p { color:#8a7a68; font-size:11.5px; }
+  .p .pill { border:1.5px solid #2a2118; border-radius:99px; padding:4px 11px; font-weight:700; font-size:11.5px; }
+  .p .pill.solid { background:#2a2118; color:#fff; }
+  .p .msgs { flex:1; padding: 16px 28px; display:flex; flex-direction:column; gap:10px; overflow:hidden; }
+  .p .row { display:flex; gap:8px; align-items:flex-end; max-width: 72%; }
+  .p .row.out { align-self:flex-end; flex-direction: row-reverse; }
+  .p .m { padding: 9px 13px; border-radius: 16px; background:#f4ece0; line-height:1.4; }
+  .p .row.in .m { border-bottom-left-radius:5px; }
+  .p .row.out .m { background:#2a2118; color:#fbf7f1; border-bottom-right-radius:5px; }
+  .p .row.ag .m { background: var(--brand); color:#fff; }
+  .p .row .bot { width:26px; height:26px; background:#2a2118; color:#fbf7f1; }
+  .p .row .face { width:26px; height:26px; border-radius:9px; background:#ffd9c9; display:grid; place-items:center; font-weight:800; font-size:11px; }
+  .p .meta { font-size:10.5px; color:#a8977f; margin-top:2px; }
+  .p .row.out .meta { text-align:right; }
+  .p .hand { align-self:stretch; display:flex; align-items:center; gap:10px; color:#8a7a68; font-weight:600; font-size:11.5px; margin: 4px 0; }
+  .p .hand::before, .p .hand::after { content:''; flex:1; height:1px; background: repeating-linear-gradient(90deg,#d8c9b3 0 6px,transparent 6px 10px); }
+  .p .hand .bot { width:18px; height:18px; background: var(--brand); color:#fff; }
+  .p .typing { display:flex; gap:8px; align-items:center; color:#8a7a68; font-size:11.5px; font-weight:600; }
+  .p .typing .bot { width:26px; height:26px; background:#2a2118; color:#fff; animation: blink 3s infinite; }
+  @keyframes blink { 0%,92%,100% { transform:scaleY(1) } 95% { transform:scaleY(.85) } }
+  .p .comp { margin: 0 20px 16px; background:#fff; border:1.5px solid #2a2118; border-radius:16px; padding: 10px 12px; }
+  .p .comp div.t { color:#a8977f; padding: 2px 2px 10px; }
+  .p .tools { display:flex; gap:8px; align-items:center; } .p .tools span { font-size:11px; font-weight:700; background:#f4ece0; border-radius:8px; padding:4px 9px; color:#5c4d3d; }
+  .p .tools .send { margin-left:auto; background: var(--brand); color:#fff; }
+  .p .side { width: 240px; background:#fff; border-left:1px solid #eadfce; padding: 18px 16px; display:flex; flex-direction:column; gap:14px; }
+  .p .side h4 { font-family:'Bricolage Grotesque'; font-weight:800; font-size:13px; margin-bottom:6px; }
+  .p .card { background:#fbf7f1; border-radius:14px; padding: 11px; line-height:1.4; color:#5c4d3d; }
+  .p .card.ai { background:#2a2118; color:#fbf7f1; } .p .card.ai b { color:#ffb59f; }
+  .p .lb span { display:inline-block; border:1.5px solid #2a2118; border-radius:99px; padding:1px 8px; font-weight:700; font-size:11px; margin: 0 4px 4px 0; }
+
+  /* ================= 3 — CRM CÁLIDO / FICHA ================= */
+  .c { font-family: Onest, sans-serif; background:#f6f7fb; color:#171a2b; --brand:#4338ca; }
+  .c .rail { width:64px; background:#171a2b; display:flex; flex-direction:column; align-items:center; padding:14px 0; gap:12px; }
+  .c .rail i { width:36px; height:36px; border-radius:11px; display:block; background:#ffffff10; }
+  .c .rail i.logo { background: var(--brand); margin-bottom:8px; } .c .rail i.on { background:#ffffff26; box-shadow: inset 0 0 0 1.5px #ffffff55; }
+  .c .list { width: 300px; display:flex; flex-direction:column; padding: 14px 10px 0 14px; }
+  .c .lh { display:flex; align-items:center; justify-content:space-between; padding: 2px 4px 10px; }
+  .c .lh h3 { font-size:18px; font-weight:700; } .c .lh span { background: var(--brand); color:#fff; border-radius:10px; padding:5px 10px; font-weight:600; font-size:11.5px; }
+  .c .seg { display:flex; gap:4px; margin-bottom:10px; overflow:hidden; }
+  .c .seg span { padding: 5px 10px; border-radius:9px; font-weight:600; font-size:11.5px; color:#5b6079; background:#fff; border:1px solid #e6e8f0; white-space:nowrap; }
+  .c .seg span.on { background:#171a2b; color:#fff; border-color:#171a2b; }
+  .c .seg b { color:#e5484d; margin-left:3px; } .c .seg span.on b { color:#ff9592; }
+  .c .it { background:#fff; border:1px solid #e6e8f0; border-radius:14px; padding: 10px 12px; margin-bottom:7px; display:flex; gap:10px; }
+  .c .it.on { border-color: var(--brand); box-shadow: 0 0 0 3px #4338ca1a; }
+  .c .av { width:38px; height:38px; border-radius:50%; display:grid; place-items:center; font-weight:700; flex-shrink:0; }
+  .c .it .b { flex:1; min-width:0; } .c .it .t { display:flex; justify-content:space-between; gap:6px; } .c .it .t b { font-weight:600; }
+  .c .it p { color:#6b7089; margin: 2px 0 6px; }
+  .c .tg { display:flex; gap:4px; } .c .tg span { font-size:10.5px; font-weight:600; padding: 1px 7px; border-radius:6px; }
+  .c .ch-w { background:#dcfce7; color:#166534; } .c .ch-i { background:#fce7f3; color:#9d174d; } .c .a1 { background:#eef2ff; color:#3730a3; } .c .a2 { background:#fef3c7; color:#92400e; }
+  .c .bar { width:4px; border-radius:4px; align-self:stretch; }
+  .c .chat { flex:1; display:flex; flex-direction:column; min-width:0; margin: 14px 0; background:#fff; border:1px solid #e6e8f0; border-radius:18px; overflow:hidden; }
+  .c .ch { padding: 12px 16px; display:flex; gap:11px; align-items:center; border-bottom:1px solid #eef0f5; }
+  .c .ch .b { flex:1; } .c .ch b { font-weight:700; font-size:14.5px; } .c .ch p { color:#6b7089; font-size:11.5px; }
+  .c .btn { border:1px solid #e6e8f0; border-radius:9px; padding:5px 10px; font-weight:600; font-size:11.5px; color:#3a3f58; }
+  .c .btn.pri { background: var(--brand); border-color: var(--brand); color:#fff; }
+  .c .who { display:flex; gap:14px; padding: 7px 16px; background:#fafbfe; border-bottom:1px solid #eef0f5; font-size:11px; color:#6b7089; }
+  .c .who span::before { content:''; display:inline-block; width:8px; height:8px; border-radius:3px; margin-right:5px; vertical-align:middle; background: var(--c); }
+  .c .msgs { flex:1; padding: 14px 20px; display:flex; flex-direction:column; gap:8px; overflow:hidden; }
+  .c .m { max-width: 66%; padding: 8px 12px; border-radius: 14px; line-height:1.4; background:#f1f2f7; }
+  .c .m small { display:block; font-size:10px; color:#8b90a7; margin-top:3px; }
+  .c .m.bot { align-self:flex-end; background:#efe9ff; } .c .m.bot small { color:#7c6bb3; }
+  .c .m.ag { align-self:flex-end; background: var(--brand); color:#fff; } .c .m.ag small { color:#c7c4f5; }
+  .c .sys { align-self:center; font-size:11px; color:#6b7089; background:#f6f7fb; border-radius:99px; padding:3px 10px; }
+  .c .comp { border-top:1px solid #eef0f5; padding: 10px 14px; }
+  .c .comp .t { color:#8b90a7; margin-bottom:8px; }
+  .c .tools { display:flex; gap:6px; } .c .tools span { font-size:11px; font-weight:600; color:#3a3f58; border:1px solid #e6e8f0; border-radius:8px; padding:3px 8px; }
+  .c .tools .send { margin-left:auto; background: var(--brand); border-color: var(--brand); color:#fff; }
+  .c .side { width: 258px; padding: 14px; display:flex; flex-direction:column; gap:10px; }
+  .c .box { background:#fff; border:1px solid #e6e8f0; border-radius:16px; padding:12px; }
+  .c .box h4 { font-size:11px; color:#6b7089; font-weight:600; margin-bottom:6px; text-transform:none; }
+  .c .pf { display:flex; gap:10px; align-items:center; } .c .pf .av { width:44px; height:44px; }
+  .c .kv { display:grid; grid-template-columns: 1fr auto; gap: 3px 8px; font-size:11.5px; } .c .kv span:nth-child(odd) { color:#6b7089; }
+  .c .ai { background: linear-gradient(135deg,#eef2ff,#faf5ff); border-color:#e0dcfb; line-height:1.45; }
+  .c .ok { color:#166534; font-weight:600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Conversaciones: tres caminos con más personalidad</h1>
+  <p class="lead">La misma charla en los tres: un cliente que empezó con el bot y que después tomó una persona. Las tres tienen todas las funciones de hoy (filtros, etiquetas, tiempo de espera, intervenir o devolver al bot, derivar, urgente, respuestas rápidas, plantillas, audio y adjuntos, resumen IA, perfil y notas). Lo que cambia es la personalidad. Hacé clic en la que te guste o decime qué mezclarías.</p>
+
+  <!-- ============ 1 ============ -->
+  <div class="block pick" data-choice="whatsapp" onclick="toggleSelect(this)">
+    <h2><span class="tag">1</span>WhatsApp nativo: el agente siente que está en el WhatsApp del cliente</h2>
+    <p class="why">El chat se ve como WhatsApp, con el fondo de dibujitos, los globos verdes y los tildes. El bot firma cada mensaje con su carita y su nombre, así sabés al toque qué contestó la IA y qué una persona. Arriba del chat, una "píldora" dice quién atiende ahora, con el botón para intervenir. Los cambios (derivó, tomó la conversación) aparecen como avisos amarillos, igual que en WhatsApp. Es la más familiar para un cliente nuevo y la que más se parece a Torem, pero más limpia.</p>
+    <div class="screen w">
+      <div class="rail"><i class="logo"></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+      <div class="list">
+        <div class="lh"><h3>Conversaciones</h3>
+          <div class="search">Buscar por nombre o teléfono</div>
+          <div class="chips"><span class="on">Todas</span><span>Esperando<em>3</em></span><span>Bot</span><span>Mías</span><span>Etiqueta ▾</span></div></div>
+        <div class="it on"><div class="av" style="background:#7c3aed">FD<sub></sub></div><div class="b"><div class="t"><b class="ell">Ferretería Don José</b><small>10:42</small></div><p class="ell">Dale, gracias por la paciencia 🙏</p><div class="who"><span class="s-ag">Joaquín</span><span class="s-lb">Soporte</span></div></div></div>
+        <div class="it"><div class="av" style="background:#e8473f">LF<sub></sub></div><div class="b"><div class="t"><b class="ell">Lucía Fernández</b><small class="late">espera 7m</small></div><p class="ell">Quiero hablar con alguien por el presupuesto</p><div class="who"><span class="s-wait">Esperando · Ventas</span></div></div></div>
+        <div class="it"><div class="av" style="background:#0ea5e9">ML<sub class="ig"></sub></div><div class="b"><div class="t"><b class="ell">Martina López</b><small>10:31</small></div><p class="ell">¿Hacen desarrollos con TiendaNube?</p><div class="who"><span class="s-bot">Bot respondiendo</span></div></div></div>
+        <div class="it"><div class="av" style="background:#f59e0b">DR<sub></sub></div><div class="b"><div class="t"><b class="ell">Diego Ruiz</b><small>ayer</small></div><p class="ell">Gracias, ya quedó!</p><div class="who"><span class="s-bot">Resuelta por el bot</span></div></div></div>
+      </div>
+      <div class="chat">
+        <div class="ch"><div class="av" style="background:#7c3aed;width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:#fff;font-weight:700">FD</div><div class="b"><b>Ferretería Don José</b><p>+54 9 299 412-3456 · WhatsApp</p></div><div class="ic"></div><div class="ic"></div><div class="ic"></div></div>
+        <div class="state"><span>Lo atiende <b>Joaquín</b> · el bot está en pausa</span><button>Devolver al bot</button></div>
+        <div class="msgs">
+          <div class="day">HOY</div>
+          <div class="m">Hola, no me llegó el pedido y en el seguimiento dice entregado<small>10:21</small></div>
+          <div class="m out"><div class="by"><span class="bot"></span>TeDi · bot</div>¡Hola! Qué macana 😕 Lo reviso: el pedido #4821 figura entregado ayer 18:40. ¿Querés que te pase con alguien del equipo para chequearlo?<small>10:21 ✓✓</small></div>
+          <div class="m">Sí por favor<small>10:22</small></div>
+          <div class="evt">TeDi derivó a <b>Soporte</b> · Joaquín tomó la conversación</div>
+          <div class="m out ag"><div class="by">Joaquín</div>Hola! Ya hablé con el correo, lo reenvían mañana a primera hora 👍<small>10:40 ✓✓</small></div>
+          <div class="m">Dale, gracias por la paciencia 🙏<small>10:42</small></div>
+        </div>
+        <div class="comp"><div class="qr"><span>⚡ Seguimiento de envío</span><span>⚡ Horarios</span><span>⚡ Medios de pago</span></div>
+          <div class="inp"><i></i><div>Escribí un mensaje</div><i></i><i class="send"></i></div></div>
+      </div>
+      <div class="side">
+        <div class="pf"><div class="av" style="background:#7c3aed">FD</div><b>Ferretería Don José</b><p style="color:#667781;font-size:11.5px">Cliente desde mar 2026</p></div>
+        <div><h4>Resumen IA</h4><div class="sum">Reclama un pedido marcado como entregado que no recibió. Se derivó a Soporte; quedó en reenviarse mañana.</div></div>
+        <div class="lbls"><h4>Etiquetas</h4><span class="s-lb">Soporte</span><span class="s-wait">Reclamo</span><span style="background:#f0f2f5;color:#54656f">+ agregar</span></div>
+        <div><h4>Notas del equipo</h4><div class="note">Cliente mayorista, priorizar.</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 2 ============ -->
+  <div class="block pick" data-choice="personaje" onclick="toggleSelect(this)">
+    <h2><span class="tag">2</span>El bot es un personaje: una carita simple que es la marca del producto</h2>
+    <p class="why">El producto tiene una mascota mínima: un círculo con dos ojitos. Es el logo, aparece cuando el bot escribe (parpadea), en cada mensaje suyo y en el momento en que pasa la conversación a una persona ("le pasó la posta a Joaquín"). Tipografía con carácter para los títulos, colores cálidos y contraste fuerte: crema, casi negro y un acento coral, que cambia por cliente. El cuadro para escribir está bien marcado, con las herramientas a la vista. Es la que más personalidad propia tiene y la más fácil de recordar en una demo.</p>
+    <div class="screen p">
+      <div class="rail">
+        <div class="logo"><span class="bot"></span>TechDI</div>
+        <div class="nav"><div>Inicio</div><div class="on">Conversaciones <em>3</em></div><div>Estadísticas</div><div>Clientes</div><div>Difusiones</div><div>Configuración</div></div>
+      </div>
+      <div class="list">
+        <div class="lh"><h3>Conversaciones</h3><div class="tabs"><span>Te esperan 3</span><span class="on">Todas</span><span>Bot</span></div></div>
+        <div class="it on"><div class="av" style="background:#ffd9c9">FD</div><div class="b"><div class="t"><b class="ell">Ferretería Don José</b><small style="color:#a8977f">10:42</small></div><p class="ell">Dale, gracias por la paciencia</p><div class="mini">Joaquín · Soporte</div></div></div>
+        <div class="it"><div class="av" style="background:#ffe8a3">LF</div><div class="b"><div class="t"><b class="ell">Lucía Fernández</b><span class="wait">7 min</span></div><p class="ell">Quiero hablar con alguien por el…</p><div class="mini">Espera a alguien de Ventas</div></div></div>
+        <div class="it"><div class="av" style="background:#cdeccd">ML</div><div class="b"><div class="t"><b class="ell">Martina López</b><small style="color:#a8977f">10:31</small></div><p class="ell">¿Hacen desarrollos con TiendaNube?</p><div class="mini"><span class="bot"></span>TeDi está respondiendo</div></div></div>
+        <div class="it"><div class="av" style="background:#d6e4ff">DR</div><div class="b"><div class="t"><b class="ell">Diego Ruiz</b><small style="color:#a8977f">ayer</small></div><p class="ell">Gracias, ya quedó!</p><div class="mini"><span class="bot"></span>TeDi la resolvió sola</div></div></div>
+      </div>
+      <div class="chat">
+        <div class="ch"><div class="av" style="background:#ffd9c9;width:40px;height:40px;border-radius:14px;display:grid;place-items:center;font-weight:800">FD</div><div class="b"><b>Ferretería Don José</b><p>WhatsApp · +54 9 299 412-3456</p></div><span class="pill">Derivar</span><span class="pill">Urgente</span><span class="pill solid">Devolver a TeDi</span></div>
+        <div class="msgs">
+          <div class="row in"><div><div class="m">Hola, no me llegó el pedido y en el seguimiento dice entregado</div><div class="meta">10:21</div></div></div>
+          <div class="row out"><span class="bot"></span><div><div class="m">¡Hola! Qué macana. El pedido #4821 figura entregado ayer 18:40. ¿Te paso con alguien del equipo?</div><div class="meta">TeDi · 10:21</div></div></div>
+          <div class="row in"><div><div class="m">Sí por favor</div><div class="meta">10:22</div></div></div>
+          <div class="hand"><span class="bot"></span>TeDi le pasó la posta a Joaquín (Soporte)</div>
+          <div class="row out ag"><span class="face">J</span><div><div class="m">¡Hola! Ya hablé con el correo, lo reenvían mañana a primera hora.</div><div class="meta">Joaquín · 10:40</div></div></div>
+          <div class="row in"><div><div class="m">Dale, gracias por la paciencia</div><div class="meta">10:42</div></div></div>
+        </div>
+        <div class="comp"><div class="t">Escribile a Ferretería Don José…</div>
+          <div class="tools"><span>⚡ Rápidas</span><span>Plantilla</span><span>Adjuntar</span><span>Audio</span><span class="send">Enviar</span></div></div>
+      </div>
+      <div class="side">
+        <div><h4>Lo que pasó</h4><div class="card ai"><b>Resumen de TeDi:</b> reclamo por pedido entregado que no llegó. Joaquín coordinó el reenvío para mañana.</div></div>
+        <div class="lb"><h4>Etiquetas</h4><span>Soporte</span><span>Reclamo</span><span style="border-style:dashed">+</span></div>
+        <div><h4>Notas del equipo</h4><div class="card">Cliente mayorista, priorizar.</div></div>
+        <div><h4>Ficha</h4><div class="card">Cliente desde mar 2026<br>12 conversaciones · 3 pedidos</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 3 ============ -->
+  <div class="block pick" data-choice="crm" onclick="toggleSelect(this)">
+    <h2><span class="tag">3</span>CRM cálido: el chat en el centro y la ficha del cliente bien rica</h2>
+    <p class="why">Pensada para el agente que necesita contexto. La lista usa tarjetas con una barrita de color según el estado (rojo esperando, violeta bot, verde resuelta) y etiquetas de canal y área bien visibles. En el chat, cada quien tiene su color: cliente gris, bot lila y agente con el color de marca, con una leyenda arriba. A la derecha, la ficha del cliente con datos útiles: el resumen IA destacado, los pedidos de TiendaNube cuando hay integración, las etiquetas y las notas. Menú lateral oscuro y botones con texto (nada de íconos sueltos sin explicar). Es la más "herramienta de trabajo" de las tres, pero amigable.</p>
+    <div class="screen c">
+      <div class="rail"><i class="logo"></i><i></i><i class="on"></i><i></i><i></i><i></i></div>
+      <div class="list">
+        <div class="lh"><h3>Conversaciones</h3><span>+ Nueva</span></div>
+        <div class="seg"><span class="on">Esperando<b>3</b></span><span>Con bot</span><span>Mías</span><span>Todas</span></div>
+        <div class="it on"><span class="bar" style="background:#4338ca"></span><div class="av" style="background:#eef2ff;color:#3730a3">FD</div><div class="b"><div class="t"><b class="ell">Ferretería Don José</b><small style="color:#8b90a7">10:42</small></div><p class="ell">Dale, gracias por la paciencia</p><div class="tg"><span class="ch-w">WhatsApp</span><span class="a2">Soporte</span></div></div></div>
+        <div class="it"><span class="bar" style="background:#e5484d"></span><div class="av" style="background:#fee2e2;color:#991b1b">LF</div><div class="b"><div class="t"><b class="ell">Lucía Fernández</b><small style="color:#e5484d;font-weight:700">7 min</small></div><p class="ell">Quiero hablar con alguien por el…</p><div class="tg"><span class="ch-w">WhatsApp</span><span class="a1">Ventas</span></div></div></div>
+        <div class="it"><span class="bar" style="background:#a78bfa"></span><div class="av" style="background:#fce7f3;color:#9d174d">ML</div><div class="b"><div class="t"><b class="ell">Martina López</b><small style="color:#8b90a7">10:31</small></div><p class="ell">¿Hacen desarrollos con TiendaNube?</p><div class="tg"><span class="ch-i">Instagram</span><span class="a1">Bot</span></div></div></div>
+      </div>
+      <div class="chat">
+        <div class="ch"><div class="av" style="background:#eef2ff;color:#3730a3;width:38px;height:38px">FD</div><div class="b"><b>Ferretería Don José</b><p>WhatsApp · Soporte · atiende Joaquín</p></div><span class="btn">Derivar</span><span class="btn">Urgente</span><span class="btn pri">Devolver al bot</span></div>
+        <div class="who"><span style="--c:#d6d8e3">Cliente</span><span style="--c:#c9b8ff">Bot (TeDi)</span><span style="--c:#4338ca">Equipo</span></div>
+        <div class="msgs">
+          <div class="m">Hola, no me llegó el pedido y en el seguimiento dice entregado<small>10:21</small></div>
+          <div class="m bot">¡Hola! Qué macana. El pedido #4821 figura entregado ayer 18:40. ¿Te paso con alguien del equipo?<small>TeDi · 10:21</small></div>
+          <div class="m">Sí por favor<small>10:22</small></div>
+          <div class="sys">Derivado a Soporte · Joaquín tomó la conversación · 10:38</div>
+          <div class="m ag">¡Hola! Ya hablé con el correo, lo reenvían mañana a primera hora.<small>Joaquín · 10:40</small></div>
+          <div class="m">Dale, gracias por la paciencia<small>10:42</small></div>
+        </div>
+        <div class="comp"><div class="t">Escribí tu respuesta… (Enter para enviar)</div>
+          <div class="tools"><span>⚡ Respuestas rápidas</span><span>Plantilla</span><span>Adjuntar</span><span>Audio</span><span class="send">Enviar</span></div></div>
+      </div>
+      <div class="side">
+        <div class="box"><div class="pf"><div class="av" style="background:#eef2ff;color:#3730a3">FD</div><div><b>Ferretería Don José</b><p style="color:#6b7089;font-size:11.5px">+54 9 299 412-3456</p></div></div></div>
+        <div class="box ai"><h4>Resumen IA</h4>Reclamo por pedido entregado que no llegó. Se coordinó reenvío para mañana.</div>
+        <div class="box"><h4>Último pedido · TiendaNube</h4><div class="kv"><span>Pedido</span><span>#4821</span><span>Total</span><span>$ 84.300</span><span>Pago</span><span class="ok">Aprobado</span><span>Envío</span><span>Entregado*</span></div></div>
+        <div class="box"><h4>Notas del equipo</h4>Cliente mayorista, priorizar.</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
