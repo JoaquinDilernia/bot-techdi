@@ -2,17 +2,35 @@ import https from 'https';
 import { getDb } from './firebase.service.js';
 
 const MODEL = 'claude-sonnet-5';
-const PRICING = { inputPerMTok: 2.00, outputPerMTok: 10.00 };
+// Caché de prompt: escribir cuesta 1.25x la entrada (TTL 5 min), leer 0.1x.
+const PRICING = { inputPerMTok: 2.00, outputPerMTok: 10.00, cacheWritePerMTok: 2.50, cacheReadPerMTok: 0.20 };
+
+// Sonnet 5 puede anteponer bloques `thinking` al texto: leer content[0].text
+// a ciegas devuelve undefined y deja al cliente sin respuesta (incidente
+// ALTORANCHO 2026-09-01). Se juntan sólo los bloques de texto.
+function extractText(response) {
+  return (response.content ?? [])
+    .filter(block => block.type === 'text')
+    .map(block => block.text)
+    .join('')
+    .trim();
+}
 
 function logUsage(usage, type) {
-  if (!usage?.input_tokens) return;
+  if (!usage?.input_tokens && !usage?.cache_read_input_tokens) return;
+  const cacheWrite = usage.cache_creation_input_tokens ?? 0;
+  const cacheRead = usage.cache_read_input_tokens ?? 0;
   const costUSD =
     (usage.input_tokens / 1e6) * PRICING.inputPerMTok +
+    (cacheWrite / 1e6) * PRICING.cacheWritePerMTok +
+    (cacheRead / 1e6) * PRICING.cacheReadPerMTok +
     (usage.output_tokens / 1e6) * PRICING.outputPerMTok;
   getDb().collection('bot-techdi_usage_logs').add({
     service: 'claude',
     model: MODEL,
-    inputTokens: usage.input_tokens,
+    inputTokens: usage.input_tokens, // sólo la parte NO cacheada
+    cacheWriteTokens: cacheWrite,
+    cacheReadTokens: cacheRead,
     outputTokens: usage.output_tokens,
     costUSD: Math.round(costUSD * 1e6) / 1e6,
     type,
@@ -129,7 +147,7 @@ export async function generateConversationSummary(messages) {
     }],
   });
   logUsage(response.usage, 'summary');
-  return response.content[0].text.trim();
+  return extractText(response).trim();
 }
 
 export async function generateBotResponse(userMessage, conversationHistory, context = {}) {
@@ -146,7 +164,7 @@ export async function generateBotResponse(userMessage, conversationHistory, cont
   });
 
   logUsage(response.usage, 'bot_reply');
-  return response.content[0].text;
+  return extractText(response);
 }
 
 function buildSystemPrompt(botConfig = {}, knowledgeBase, customerContext, availableLabels = [], areas = []) {
@@ -166,7 +184,6 @@ Nunca inventás información sobre servicios, precios, plazos, procesos o links 
     prompt += `\n\n--- INFORMACIÓN DE LA EMPRESA ---\n${knowledgeBase}`;
     prompt += `\n\nIMPORTANTE — USO DE ESTA INFORMACIÓN: Es TU ÚNICA fuente de verdad sobre servicios, precios, procesos y políticas. Antes de responder CUALQUIER consulta, revisá esta sección completa primero. Si algo aplica, compartilo directamente aunque el cliente no lo pida explícitamente. Si la consulta no está cubierta acá, NUNCA inventes ni supongas una respuesta — decí que no tenés esa info y ofrecé derivar a alguien del equipo.`;
   }
-  if (customerContext) prompt += `\n\n--- PERFIL DEL CONTACTO ---\n${customerContext}`;
   if (availableLabels.length) {
     prompt += `\n\n--- ETIQUETAS ---\nDEBÉS etiquetar SIEMPRE esta conversación con al menos 1 etiqueta usando [LABEL:nombre] en tu respuesta (invisible para el cliente).
 Etiquetas disponibles: ${availableLabels.join(', ')}.
@@ -178,7 +195,13 @@ Guía:
 - [LABEL:Reclamo] → queja o insatisfacción.
 Podés combinar varias etiquetas si aplica.`;
   }
-  return prompt;
+
+  // Caché de prompt: todo lo de arriba es igual para todos los contactos y va
+  // en un bloque cacheado (~10% del costo); lo que depende del contacto va
+  // aparte, al final. No meter nada variable en el primer bloque.
+  const blocks = [{ type: 'text', text: prompt, cache_control: { type: 'ephemeral' } }];
+  if (customerContext) blocks.push({ type: 'text', text: `--- PERFIL DEL CONTACTO ---\n${customerContext}` });
+  return blocks;
 }
 
 function buildMessages(conversationHistory, newMessage, imageData = null) {
