@@ -3,18 +3,11 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { authFetch, BASE_URL } from '../lib/api';
 import { useNotifications } from '../hooks/useNotifications.js';
+import { useBrand } from '../contexts/BrandContext';
+import BotFace from '../components/ui/BotFace';
+import { waitLevel, avatarColor, pillFor, resolveAssignee, initials, listTime } from '../lib/conversationView';
 import styles from './Conversations.module.css';
 
-
-const STATUS_CONFIG = {
-  bot:          { label: 'Bot activo',    cls: 'bot' },
-  escalated:    { label: 'Con agente',    cls: 'escalated' },
-  bot_archived: { label: 'Archivado Bot', cls: 'bot_archived' },
-  resolved:     { label: 'Cerrado',       cls: 'resolved' },
-  // Legacy
-  urgent:       { label: 'Urgente',       cls: 'urgent' },
-  waiting:      { label: 'En espera',     cls: 'waiting' },
-};
 
 const CHANNEL_CONFIG = {
   whatsapp:  { label: 'WhatsApp', cls: 'wpp' },
@@ -22,29 +15,38 @@ const CHANNEL_CONFIG = {
 };
 
 const FILTERS = [
+  { value: 'waiting',       label: 'Esperando' },
   { value: 'bot',           label: 'Bot' },
   { value: 'mine',          label: 'Mis casos' },
   { value: 'teams',         label: 'Equipos',  minRole: 'atencion_cliente' },
   { value: 'archived',      label: 'Archivados' },
 ];
 
-const SLA_WARN_MS  = 15 * 60 * 1000;  // 15 min → amarillo
-const SLA_ALERT_MS = 30 * 60 * 1000;  // 30 min → naranja
-const SLA_CRIT_MS  = 60 * 60 * 1000;  // 60 min → rojo
-
-function StatusChip({ status }) {
-  const cfg = STATUS_CONFIG[status] ?? { label: status, cls: 'bot' };
-  return <span className={`${styles.chip} ${styles['chip_' + cfg.cls]}`}>{cfg.label}</span>;
-}
-
 function ChannelBadge({ channel }) {
   const cfg = CHANNEL_CONFIG[channel] ?? { label: channel, cls: 'wpp' };
   return <span className={`${styles.badge} ${styles['badge_' + cfg.cls]}`}>{cfg.label}</span>;
 }
 
-function AgentBadge({ assignedTo, nameMap = {} }) {
-  if (!assignedTo) return null;
-  return <span className={styles.agentBadge}>{nameMap[assignedTo] ?? assignedTo}</span>;
+// Avatar redondo de color estable con el punto del canal (WhatsApp / Instagram).
+function ConvAvatar({ conv, size }) {
+  const seed = conv.contactId || conv.id;
+  return (
+    <span
+      className={styles.avatar}
+      style={{ background: avatarColor(seed), ...(size ? { width: size, height: size } : null) }}
+      aria-hidden="true"
+    >
+      {initials(conv.contactName || conv.contactId)}
+      <span className={`${styles.chanDot} ${conv.channel === 'instagram' ? styles.chanDotIg : ''}`} />
+    </span>
+  );
+}
+
+function contactSubtitle(conv) {
+  const channel = CHANNEL_CONFIG[conv.channel]?.label ?? conv.channel ?? 'WhatsApp';
+  const id = conv.contactId ?? '';
+  const shown = conv.channel !== 'instagram' && /^\d+$/.test(id) ? `+${id}` : id;
+  return shown ? `${shown} · ${channel}` : channel;
 }
 
 function LabelChip({ label, labelMap, onRemove }) {
@@ -120,13 +122,6 @@ function getSlaWaitMs(conv) {
   const since = conv.waitingSince ?? conv.lastClientMessageAt;
   const d = tsToDate(since);
   return d ? Math.max(0, Date.now() - d.getTime()) : 0;
-}
-
-function slaColor(waitMs) {
-  if (waitMs >= SLA_CRIT_MS)  return '#ef4444';
-  if (waitMs >= SLA_ALERT_MS) return '#f97316';
-  if (waitMs >= SLA_WARN_MS)  return '#eab308';
-  return null;
 }
 
 // Delivery status icon for agent messages
@@ -566,64 +561,62 @@ function ForwardModal({ items, conversations, onClose, onDone }) {
   );
 }
 
-function ConvItem({ conv, active, onClick, labelMap, nameMap = {} }) {
+const PILL_TONE_CLS = { bot: 'pillBot', wait: 'pillWait', agent: 'pillAgent', ok: 'pillOk', muted: 'pillMuted' };
+
+function ConvItem({ conv, active, onClick, pill }) {
   const isUrgent = conv.urgent;
   const pendingMsgs = conv.consecutiveClientMessages ?? 0;
   const isInsistent = pendingMsgs >= 3;
   const isWaiting = pendingMsgs > 0 && conv.lastClientMessageAt;
   const waitMs = getSlaWaitMs(conv);
-  const slaBadgeColor = slaColor(waitMs);
+  // Contador de espera: naranja desde 5 min, rojo desde 15 (solo si espera a un agente).
+  const level = waitMs > 0 ? waitLevel(waitMs / 60000) : 'none';
+  const firstLabel = conv.labels?.[0];
+  const moreLabels = (conv.labels?.length ?? 0) - 1;
 
   return (
     <button
       className={`${styles.item} ${active ? styles.itemActive : ''}`}
       onClick={onClick}
     >
-      <div className={styles.itemTop}>
-        <span className={styles.itemName}>{conv.contactName || conv.contactId}</span>
-        <div className={styles.itemTopRight}>
+      <ConvAvatar conv={conv} />
+      <div className={styles.itemBody}>
+        <div className={styles.itemTop}>
+          <span className={styles.itemName}>{conv.contactName || conv.contactId}</span>
+          {isWaiting ? (
+            <span
+              className={`${styles.itemTime} ${level === 'warn' ? styles.itemTimeWarn : ''} ${level === 'late' ? styles.itemTimeLate : ''}`}
+              title="Tiempo esperando respuesta de agente"
+            >
+              espera {formatAge(conv.waitingSince ?? conv.lastClientMessageAt)}
+            </span>
+          ) : (
+            conv.updatedAt && <span className={styles.itemTime} title={formatDateTime(conv.updatedAt)}>{listTime(conv.updatedAt)}</span>
+          )}
+        </div>
+        <div className={styles.itemMid}>
+          <p className={styles.itemPreview}>{conv.lastMessage || ' '}</p>
           <div className={styles.itemIndicators}>
             {conv.critical && <span className={styles.criticalBadge} title="Crítico — 4+ mensajes sin respuesta">🔴</span>}
             {isUrgent && <span className={styles.urgentFlagBadge} title="Urgente">⚡</span>}
             {isInsistent && <span className={styles.insistentBadge} title="Cliente insistente — escribió varias veces sin respuesta">⚠</span>}
-            {isWaiting && (
-              <span
-                className={styles.waitTimeBadge}
-                title="Tiempo esperando respuesta de agente"
-                style={slaBadgeColor ? { background: slaBadgeColor + '22', color: slaBadgeColor, borderColor: slaBadgeColor + '66' } : undefined}
-              >
-                ⏳ {formatAge(conv.waitingSince ?? conv.lastClientMessageAt)}
-              </span>
-            )}
             {pendingMsgs > 0 && (
               <span className={styles.pendingMsgsBadge} title={`${pendingMsgs} mensaje${pendingMsgs > 1 ? 's' : ''} sin respuesta`}>
                 {pendingMsgs} msg{pendingMsgs > 1 ? 's' : ''}
               </span>
             )}
+            {conv.unread > 0 && <span className={styles.itemUnread}>{conv.unread}</span>}
           </div>
-          {conv.updatedAt && <span className={styles.itemAge}>{formatAge(conv.updatedAt)}</span>}
-          {conv.unread > 0 && <span className={styles.itemUnread}>{conv.unread}</span>}
         </div>
-      </div>
-      <div className={styles.itemBottom}>
-        <StatusChip status={conv.status || 'bot'} />
-        <ChannelBadge channel={conv.channel} />
-        <AgentBadge assignedTo={conv.assignedTo} nameMap={nameMap} />
-      </div>
-      {conv.lastMessage && <p className={styles.itemPreview}>{conv.lastMessage}</p>}
-      {conv.labels?.length > 0 && (
-        <div className={styles.itemLabels}>
-          {conv.labels.map(l => (
-            <span
-              key={l}
-              className={styles.labelChipSmall}
-              style={{ background: (labelMap[l] ?? '#6b7280') + '22', color: labelMap[l] ?? '#6b7280', borderColor: (labelMap[l] ?? '#6b7280') + '55' }}
-            >
-              {l}
+        <div className={styles.itemWho}>
+          <span className={`${styles.pill} ${styles[PILL_TONE_CLS[pill.tone]]}`}>{pill.text}</span>
+          {firstLabel && (
+            <span className={`${styles.pill} ${styles.pillLabel}`} title={conv.labels.join(', ')}>
+              {firstLabel}{moreLabels > 0 ? ` +${moreLabels}` : ''}
             </span>
-          ))}
+          )}
         </div>
-      )}
+      </div>
     </button>
   );
 }
@@ -716,6 +709,8 @@ export default function Conversations() {
 
   const labelMap = Object.fromEntries(allLabels.map(l => [l.name, l.color]));
   const myId = agent?.id;
+  const { botName } = useBrand();
+  const pillOf = (c) => pillFor(c, { botName, areas, nameMap });
 
   useNotifications(conversations);
 
@@ -1466,9 +1461,9 @@ export default function Conversations() {
           if (isConvArchived) return false;
           if (!convUrgent) return false;
         } else if (filter === 'waiting') {
+          // Derivadas (a un área o sin asignar) que todavía no tomó ningún agente.
           if (isConvArchived) return false;
-          if (!convHuman) return false;
-          if (getSlaWaitMs(c) < 60 * 60 * 1000) return false;
+          if (pillOf(c).tone !== 'wait') return false;
         } else if (filter === 'teams') {
           if (isConvArchived) return false;
           if (!convHuman) return false;
@@ -1483,6 +1478,13 @@ export default function Conversations() {
     filtered.sort((a, b) => getSlaWaitMs(b) - getSlaWaitMs(a));
   }
 
+  const waitingCount = conversations.filter(c => {
+    const s = c.status || 'bot';
+    return s !== 'bot_archived' && s !== 'resolved' && pillOf(c).tone === 'wait';
+  }).length;
+  const selectedAssignee = selected ? resolveAssignee(selected.assignedTo, { areas, nameMap }) : null;
+  const selectedPill = selected ? pillOf(selected) : null;
+
   return (
     <div className={styles.page}>
       {/* ---- Sidebar ---- */}
@@ -1495,11 +1497,11 @@ export default function Conversations() {
           <input
             className={styles.searchInput}
             type="search"
-            placeholder="Buscar contacto..."
+            placeholder="Buscar por nombre o teléfono"
             value={search}
             onChange={e => setSearch(e.target.value)}
           />
-          <div className={styles.chips}>
+          <div className={styles.chips} role="tablist" aria-label="Filtros">
             {FILTERS.filter(f => {
               if (!f.minRole) return true;
               if (f.minRole === 'atencion_cliente') return agent?.role === 'admin' || agent?.role === 'atencion_cliente';
@@ -1510,10 +1512,28 @@ export default function Conversations() {
                 key={f.value}
                 onClick={() => { setFilter(f.value); if (f.value !== 'teams') setTeamsAreaFilter(''); }}
                 className={`${styles.filterChip} ${filter === f.value ? styles.filterChipActive : ''}`}
+                role="tab"
+                aria-selected={filter === f.value}
               >
                 {f.label}
+                {f.value === 'waiting' && waitingCount > 0 && (
+                  <em className={styles.filterChipCount}>{waitingCount > 99 ? '99+' : waitingCount}</em>
+                )}
               </button>
             ))}
+            {allLabels.length > 0 && (
+              <select
+                className={`${styles.filterChip} ${styles.chipSelect} ${labelFilter ? styles.filterChipActive : ''}`}
+                value={labelFilter ?? ''}
+                onChange={e => setLabelFilter(e.target.value || null)}
+                title="Filtrar por etiqueta"
+              >
+                <option value="">Etiqueta ▾</option>
+                {allLabels.map(l => (
+                  <option key={l.id} value={l.name}>{l.name}</option>
+                ))}
+              </select>
+            )}
           </div>
           {filter === 'teams' && areas.length > 0 && (
             <select
@@ -1524,18 +1544,6 @@ export default function Conversations() {
               <option value="">Todas las áreas</option>
               {areas.map(a => (
                 <option key={a.id} value={a.id}>{a.name}</option>
-              ))}
-            </select>
-          )}
-          {allLabels.length > 0 && (
-            <select
-              className={styles.labelSelect}
-              value={labelFilter ?? ''}
-              onChange={e => setLabelFilter(e.target.value || null)}
-            >
-              <option value="">Todas las etiquetas</option>
-              {allLabels.map(l => (
-                <option key={l.id} value={l.name}>{l.name}</option>
               ))}
             </select>
           )}
@@ -1557,8 +1565,7 @@ export default function Conversations() {
                 conv={c}
                 active={selected?.id === c.id}
                 onClick={() => setSelected(c)}
-                labelMap={labelMap}
-                nameMap={nameMap}
+                pill={pillOf(c)}
               />
             ))
           )}
@@ -1575,7 +1582,6 @@ export default function Conversations() {
         ) : (
           <>
             <div className={styles.threadHeader}>
-              {/* Row 1: name + close/reopen */}
               <div className={styles.threadHeaderTop}>
                 <button
                   type="button"
@@ -1585,149 +1591,157 @@ export default function Conversations() {
                 >
                   ←
                 </button>
-                <span className={styles.threadName}>
-                  {selected.contactName || selected.contactId}
-                  {isUrgentFlag && <span style={{ marginLeft: 6, fontSize: 14 }}>⚡</span>}
-                </span>
+                <ConvAvatar conv={selected} size={38} />
+                <div className={styles.threadTitle}>
+                  <span className={styles.threadName}>
+                    {selected.contactName || selected.contactId}
+                    {isUrgentFlag && <span className={styles.threadUrgentMark} title="Urgente">⚡</span>}
+                  </span>
+                  <span className={styles.threadSub}>{contactSubtitle(selected)}</span>
+                </div>
                 <div className={styles.threadActions}>
                   <button
                     type="button"
-                    className={`${styles.chatSearchToggle} ${chatSearchOpen ? styles.chatSearchToggleOn : ''}`}
+                    className={`${styles.iconBtn} ${chatSearchOpen ? styles.iconBtnOn : ''}`}
                     onClick={() => (chatSearchOpen ? closeChatSearch() : setChatSearchOpen(true))}
                     title="Buscar en este chat"
                   >
                     🔍
                   </button>
+                  {!isArchived && agentsList.length > 0 && (
+                    <select
+                      className={styles.deriveSelect}
+                      value=""
+                      onChange={e => { if (e.target.value) dispatch('assign_to', { assignedTo: e.target.value }); }}
+                      disabled={updating}
+                      title="Derivar a agente específico"
+                      aria-label="Derivar a agente específico"
+                    >
+                      <option value="">↪ Derivar…</option>
+                      {agentsList.map(a => (
+                        <option key={a.id} value={a.email}>{a.name}</option>
+                      ))}
+                    </select>
+                  )}
+                  {!isArchived && (
+                    <button
+                      type="button"
+                      className={`${styles.iconBtn} ${isUrgentFlag ? styles.iconBtnUrgent : ''}`}
+                      onClick={() => dispatch(isUrgentFlag ? 'unset_urgent' : 'set_urgent')}
+                      disabled={updating}
+                      title={isUrgentFlag ? 'Quitar urgente' : 'Marcar como urgente'}
+                      aria-pressed={isUrgentFlag}
+                    >
+                      ⚡
+                    </button>
+                  )}
+                  {isArchived ? (
+                    <button
+                      type="button"
+                      className={styles.iconBtn}
+                      onClick={() => dispatch('to_bot')}
+                      disabled={updating}
+                      title="Reabrir conversación"
+                    >
+                      ↩
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className={styles.iconBtn}
+                      onClick={() => dispatch('bot_archive')}
+                      disabled={updating}
+                      title="Archivar conversación"
+                    >
+                      ✓
+                    </button>
+                  )}
                   <button
                     type="button"
-                    className={styles.profileToggleBtn}
+                    className={`${styles.iconBtn} ${styles.profileToggleBtn}`}
                     onClick={() => setShowMobileProfile(v => !v)}
                     title="Ver perfil del cliente"
                   >
                     👤
                   </button>
-                  {isArchived ? (
-                    <button className={`${styles.actionBtn} ${styles.actionReopen}`} onClick={() => dispatch('to_bot')} disabled={updating}>
-                      ↩ Reabrir
-                    </button>
-                  ) : (
-                    <button
-                      className={`${styles.actionBtn} ${styles.actionResolve}`}
-                      onClick={() => dispatch('bot_archive')}
-                      disabled={updating}
-                      title="Archivar conversación"
-                    >
-                      ✓ Archivar
-                    </button>
-                  )}
                 </div>
               </div>
 
-              {/* Row 2: badges + dispatch actions */}
-              <div className={styles.threadHeaderBottom}>
-                <div className={styles.threadHeaderBadges}>
-                  <ChannelBadge channel={selected.channel} />
-                  <StatusChip status={currentStatus} />
-                  {selected.assignedTo && <AgentBadge assignedTo={selected.assignedTo} nameMap={nameMap} />}
-                </div>
-
+              <div className={styles.labelsRow}>
+                {(selected.labels ?? []).map(l => (
+                  <LabelChip key={l} label={l} labelMap={labelMap} onRemove={!isArchived ? removeLabel : null} />
+                ))}
                 {!isArchived && (
-                  <div className={styles.dispatchActions}>
+                  <div className={styles.labelAddWrap}>
                     <button
-                      className={`${styles.dispatchBtn} ${styles.dispatchBotBtn} ${!isHuman && currentStatus === 'bot' ? styles.dispatchBtnActive : ''}`}
-                      onClick={() => dispatch('to_bot')}
-                      disabled={updating}
-                      title="Enviar al Bot"
+                      className={styles.labelAddBtn}
+                      onClick={() => setLabelDropOpen(v => !v)}
+                      title="Agregar etiqueta"
                     >
-                      🤖 Bot
+                      + Etiqueta
                     </button>
-
-                    {/* Take over button: visible when bot is handling the conv */}
-                    {!isHuman && currentStatus === 'bot' && (
-                      <button
-                        className={styles.takeOverBtn}
-                        onClick={() => dispatch('take_over', { agentId: myId })}
-                        disabled={updating}
-                        title="Tomar esta conversación — el bot deja de responder"
-                      >
-                        ✋ Tomar
-                      </button>
-                    )}
-
-                    {agentsList.length > 0 && (
-                      <select
-                        className={styles.agentSelect}
-                        value=""
-                        onChange={e => { if (e.target.value) dispatch('assign_to', { assignedTo: e.target.value }); }}
-                        disabled={updating}
-                        title="Derivar a agente específico"
-                      >
-                        <option value="">→ Agente...</option>
-                        {agentsList.map(a => (
-                          <option key={a.id} value={a.email}>{a.name}</option>
+                    {labelDropOpen && availableToAdd.length > 0 && (
+                      <div className={styles.labelDropdown}>
+                        {availableToAdd.map(l => (
+                          <button
+                            key={l.id}
+                            className={styles.labelDropItem}
+                            onClick={() => addLabel(l.name)}
+                          >
+                            <span className={styles.labelDropDot} style={{ background: l.color }} />
+                            {l.name}
+                          </button>
                         ))}
-                      </select>
+                      </div>
                     )}
-
-                    {/* Urgent toggle: always visible, toggles the flag */}
-                    {isUrgentFlag ? (
-                      <button
-                        className={`${styles.dispatchBtn} ${styles.dispatchUnurgentBtn}`}
-                        onClick={() => dispatch('unset_urgent')}
-                        disabled={updating}
-                        title="Quitar urgente"
-                      >
-                        ⚡ Quitar urgente
-                      </button>
-                    ) : (
-                      <button
-                        className={`${styles.dispatchBtn} ${styles.dispatchUrgentBtn}`}
-                        onClick={() => dispatch('set_urgent')}
-                        disabled={updating}
-                        title="Marcar como urgente"
-                      >
-                        ⚡ Urgente
-                      </button>
+                    {labelDropOpen && availableToAdd.length === 0 && (
+                      <div className={styles.labelDropdown}>
+                        <span className={styles.labelDropEmpty}>Sin etiquetas disponibles</span>
+                      </div>
                     )}
                   </div>
                 )}
-
-                <div className={styles.labelsRow}>
-                  {(selected.labels ?? []).map(l => (
-                    <LabelChip key={l} label={l} labelMap={labelMap} onRemove={!isArchived ? removeLabel : null} />
-                  ))}
-                  {!isArchived && (
-                    <div className={styles.labelAddWrap}>
-                      <button
-                        className={styles.labelAddBtn}
-                        onClick={() => setLabelDropOpen(v => !v)}
-                        title="Agregar etiqueta"
-                      >
-                        + Etiqueta
-                      </button>
-                      {labelDropOpen && availableToAdd.length > 0 && (
-                        <div className={styles.labelDropdown}>
-                          {availableToAdd.map(l => (
-                            <button
-                              key={l.id}
-                              className={styles.labelDropItem}
-                              onClick={() => addLabel(l.name)}
-                            >
-                              <span className={styles.labelDropDot} style={{ background: l.color }} />
-                              {l.name}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      {labelDropOpen && availableToAdd.length === 0 && (
-                        <div className={styles.labelDropdown}>
-                          <span className={styles.labelDropEmpty}>Sin etiquetas disponibles</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
               </div>
+            </div>
+
+            {/* ---- Píldora de estado: quién atiende ---- */}
+            <div className={styles.statePillWrap}>
+              {isArchived ? (
+                <div className={`${styles.statePill} ${styles.statePillMuted}`}>
+                  <span>{selectedPill.text === 'Resuelta' ? 'Conversación resuelta' : 'Conversación archivada'}</span>
+                </div>
+              ) : !isHuman ? (
+                <div className={styles.statePill}>
+                  <BotFace size={22} />
+                  <span>Responde <b>{botName}</b></span>
+                  <button
+                    type="button"
+                    className={styles.statePillBtn}
+                    onClick={() => dispatch('take_over', { agentId: myId })}
+                    disabled={updating}
+                    title="Tomar esta conversación — el bot deja de responder"
+                  >
+                    Intervenir
+                  </button>
+                </div>
+              ) : (
+                <div className={styles.statePill}>
+                  {selectedPill.tone === 'agent' ? (
+                    <span>Lo atiende <b>{selectedAssignee.agentName}</b> · {botName} está en pausa</span>
+                  ) : (
+                    <span><b className={styles.statePillWait}>{selectedPill.text}</b> · {botName} está en pausa</span>
+                  )}
+                  <button
+                    type="button"
+                    className={styles.statePillBtn}
+                    onClick={() => dispatch('to_bot')}
+                    disabled={updating}
+                    title="Enviar al Bot"
+                  >
+                    Devolver a {botName}
+                  </button>
+                </div>
+              )}
             </div>
 
             {chatSearchOpen && (
