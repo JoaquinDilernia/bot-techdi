@@ -5,7 +5,7 @@ import { authFetch, BASE_URL } from '../lib/api';
 import { useNotifications } from '../hooks/useNotifications.js';
 import { useBrand } from '../contexts/BrandContext';
 import BotFace from '../components/ui/BotFace';
-import { waitLevel, avatarColor, pillFor, resolveAssignee, initials, listTime } from '../lib/conversationView';
+import { waitLevel, avatarColor, pillFor, resolveAssignee, initials, listTime, buildTimeline } from '../lib/conversationView';
 import styles from './Conversations.module.css';
 
 
@@ -103,6 +103,15 @@ function formatDate(ts) {
   return d.toLocaleDateString('es-AR');
 }
 
+// "mar 2026" — para el "Cliente desde" del perfil.
+function formatMonthYear(ts) {
+  const d = tsToDate(ts);
+  if (!d) return '';
+  return d.toLocaleDateString('es-AR', { month: 'short', year: 'numeric' }).replace('.', '');
+}
+
+const EMOJIS = ['😀', '😂', '😊', '😍', '🙏', '👍', '👌', '👋', '🙌', '👏', '💪', '🎉', '❤️', '🔥', '✅', '❌', '⚠️', '📦', '🚚', '💳', '📞', '⏰', '😕', '😉'];
+
 function formatRecordTime(totalSeconds) {
   const m = Math.floor(totalSeconds / 60).toString().padStart(2, '0');
   const s = (totalSeconds % 60).toString().padStart(2, '0');
@@ -129,7 +138,7 @@ function MsgStatusIcon({ msgStatus }) {
   if (!msgStatus || msgStatus === 'sent') return <span className={styles.msgStatus}>✓</span>;
   if (msgStatus === 'sending') return <span className={styles.msgStatus}>⏳</span>;
   if (msgStatus === 'delivered') return <span className={styles.msgStatus}>✓✓</span>;
-  if (msgStatus === 'read') return <span className={`${styles.msgStatus}`} style={{ color: '#3b82f6' }}>✓✓</span>;
+  if (msgStatus === 'read') return <span className={`${styles.msgStatus} ${styles.msgStatusRead}`}>✓✓</span>;
   if (msgStatus === 'error') return <span className={`${styles.msgStatus} ${styles.msgStatusError}`}>✗ No enviado</span>;
   return null;
 }
@@ -250,11 +259,12 @@ function MessageBubble({
   searchQuery = '', isCurrentMatch = false, rootRef,
   selectMode = false, isSelected = false, onToggleSelect,
 }) {
+  const { botName } = useBrand();
   const isUser = msg.role === 'user';
   const isAdmin = msg.role === 'admin';
   // Mensajes viejos no tienen `sentBy` (se agregó después) — quedan mostrando
   // "Agente" genérico en vez de romper o mostrar un nombre incorrecto.
-  const senderLabel = isUser ? 'Cliente' : isAdmin ? (nameMap[msg.sentBy] ?? 'Agente') : 'Bot';
+  const agentLabel = nameMap[msg.sentBy] ?? 'Agente';
   const token = localStorage.getItem('techdi_token');
   // WhatsApp → proxy del backend por mediaId; Instagram → URL directa del CDN.
   const mediaProxyUrl = msg.mediaId
@@ -299,6 +309,11 @@ function MessageBubble({
       onClick={selectMode && forwardable ? onToggleSelect : undefined}
     >
       <div className={`${styles.msgBubble} ${isError ? styles.msgBubbleError : ''} ${isCurrentMatch ? styles.msgBubbleMatch : ''}`}>
+        {/* Firma: el bot con su carita, los agentes con su nombre */}
+        {msg.role === 'assistant' && (
+          <span className={`${styles.msgBy} ${styles.msgByBot}`}><BotFace size={14} />{botName} · bot</span>
+        )}
+        {isAdmin && <span className={`${styles.msgBy} ${styles.msgByAgent}`}>{agentLabel}</span>}
         {msg.forwarded && <span className={styles.msgForwardedTag}>↪ Reenviado</span>}
         {msg.replyTo && (
           <div className={styles.msgReplyQuote}>
@@ -388,14 +403,17 @@ function MessageBubble({
             ↻ Reintentar
           </button>
         )}
+        {(msg.timestamp || isAdmin) && (
+          <span className={styles.msgTime} title={msg.timestamp ? formatDateTime(msg.timestamp) : undefined}>
+            {msg.timestamp ? formatTime(msg.timestamp) : ''}
+            {isAdmin && <MsgStatusIcon msgStatus={msg.msgStatus} />}
+          </span>
+        )}
       </div>
       <span className={styles.msgMeta}>
         {selectMode && forwardable && (
           <span className={`${styles.msgCheck} ${isSelected ? styles.msgCheckOn : ''}`}>{isSelected ? '✓' : ''}</span>
         )}
-        {senderLabel}
-        {msg.timestamp ? ` · ${formatDateTime(msg.timestamp)}` : ''}
-        {isAdmin && <MsgStatusIcon msgStatus={msg.msgStatus} />}
         {onQuote && msg.waMsgId && (
           <button
             type="button"
@@ -663,6 +681,7 @@ export default function Conversations() {
   const [labelDropOpen, setLabelDropOpen] = useState(false);
   const [quickReplies, setQuickReplies] = useState([]);
   const [qrOpen, setQrOpen] = useState(false);
+  const [emojiOpen, setEmojiOpen] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [showNewConvModal, setShowNewConvModal] = useState(false);
   const [newPhone, setNewPhone] = useState('');
@@ -701,6 +720,7 @@ export default function Conversations() {
   const pollMsgRef = useRef(null);
   const selectedIdRef = useRef(null);
   const mediaInputRef = useRef(null);
+  const replyInputRef = useRef(null);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const mediaStreamRef = useRef(null);
@@ -804,6 +824,7 @@ export default function Conversations() {
     markRead(selected.id);
     setLabelDropOpen(false);
     setQrOpen(false);
+    setEmojiOpen(false);
     // Reset window state when switching conversations
     setApiWindowError(false);
     setTemplateSendOpen(false);
@@ -853,6 +874,25 @@ export default function Conversations() {
       el.removeEventListener('loadedmetadata', onMediaLoad, true);
     };
   }, [selected?.id]);
+
+  // Mensajes + separadores de día + avisos de traspaso. Derivado (puro) del
+  // array de mensajes: cada poll de 5 s lo recalcula desde cero, así que no
+  // puede acumular avisos duplicados.
+  const timeline = useMemo(() => buildTimeline(messages, { botName, nameMap }), [messages, botName, nameMap]);
+
+  // Insertar un emoji donde está el cursor del composer.
+  function insertEmoji(emoji) {
+    const el = replyInputRef.current;
+    const start = el?.selectionStart ?? reply.length;
+    const end = el?.selectionEnd ?? reply.length;
+    setReply(reply.slice(0, start) + emoji + reply.slice(end));
+    setEmojiOpen(false);
+    requestAnimationFrame(() => {
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(start + emoji.length, start + emoji.length);
+    });
+  }
 
   // ---- Buscador dentro del chat ----
   const chatSearchMatches = useMemo(() => {
@@ -1609,19 +1649,23 @@ export default function Conversations() {
                     🔍
                   </button>
                   {!isArchived && agentsList.length > 0 && (
-                    <select
-                      className={styles.deriveSelect}
-                      value=""
-                      onChange={e => { if (e.target.value) dispatch('assign_to', { assignedTo: e.target.value }); }}
-                      disabled={updating}
-                      title="Derivar a agente específico"
-                      aria-label="Derivar a agente específico"
-                    >
-                      <option value="">↪ Derivar…</option>
-                      {agentsList.map(a => (
-                        <option key={a.id} value={a.email}>{a.name}</option>
-                      ))}
-                    </select>
+                    <span className={styles.deriveWrap}>
+                      {/* En mobile el select queda invisible encima de este ícono */}
+                      <span className={`${styles.iconBtn} ${styles.deriveIcon}`} aria-hidden="true">↪</span>
+                      <select
+                        className={styles.deriveSelect}
+                        value=""
+                        onChange={e => { if (e.target.value) dispatch('assign_to', { assignedTo: e.target.value }); }}
+                        disabled={updating}
+                        title="Derivar a agente específico"
+                        aria-label="Derivar a agente específico"
+                      >
+                        <option value="">↪ Derivar…</option>
+                        {agentsList.map(a => (
+                          <option key={a.id} value={a.email}>{a.name}</option>
+                        ))}
+                      </select>
+                    </span>
                   )}
                   {!isArchived && (
                     <button
@@ -1710,7 +1754,7 @@ export default function Conversations() {
                 <div className={`${styles.statePill} ${styles.statePillMuted}`}>
                   <span>{selectedPill.text === 'Resuelta' ? 'Conversación resuelta' : 'Conversación archivada'}</span>
                 </div>
-              ) : !isHuman ? (
+              ) : selectedPill.tone === 'bot' ? (
                 <div className={styles.statePill}>
                   <BotFace size={22} />
                   <span>Responde <b>{botName}</b></span>
@@ -1779,7 +1823,14 @@ export default function Conversations() {
               {messages.length === 0 ? (
                 <p className={styles.noMessages}>{messagesLoading ? 'Cargando mensajes…' : 'Sin mensajes aún.'}</p>
               ) : (
-                messages.map((msg, i) => {
+                timeline.map(item => {
+                  if (item.kind === 'day') {
+                    return <div key={item.key} className={styles.daySep}>{item.label}</div>;
+                  }
+                  if (item.kind === 'handoff') {
+                    return <div key={item.key} className={styles.handoffNotice}>{item.text}</div>;
+                  }
+                  const { msg, index: i } = item;
                   const canRetry = msg.role === 'admin' && msg.msgStatus === 'error'
                     && msg.content?.trim() && !msg.mediaType
                     && !msg.content.startsWith('[Plantilla:');
@@ -2028,63 +2079,71 @@ export default function Conversations() {
                     </button>
                   </div>
                 ) : (
+                <>
+                {quickReplies.length > 0 && (
+                  /* ---- Respuestas rápidas: 3 a mano + el selector completo ---- */
+                  <div className={styles.qrRow}>
+                    {quickReplies.slice(0, 3).map(qr => (
+                      <button
+                        type="button"
+                        key={qr.id}
+                        className={styles.qrChip}
+                        onClick={() => setReply(qr.text)}
+                        title={qr.text}
+                      >
+                        ⚡ {qr.title || qr.shortcut}
+                      </button>
+                    ))}
+                    <div className={styles.qrWrap}>
+                      <button
+                        type="button"
+                        className={styles.qrBtn}
+                        onClick={() => setQrOpen(v => !v)}
+                        title="Respuestas rápidas"
+                        aria-expanded={qrOpen}
+                      >
+                        ⚡ Todas ▾
+                      </button>
+                      {qrOpen && (
+                        <div className={styles.qrDropdown}>
+                          {quickReplies.map(qr => (
+                            <button
+                              type="button"
+                              key={qr.id}
+                              className={styles.qrDropItem}
+                              onClick={() => { setReply(qr.text); setQrOpen(false); }}
+                            >
+                              <span className={styles.qrDropTitle}>
+                                {qr.shortcut && <code className={styles.qrDropShortcut}>/{qr.shortcut}</code>}
+                                {qr.title || qr.shortcut}
+                              </span>
+                              <span className={styles.qrDropText}>{qr.text}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                 <div className={styles.replyRow}>
-                  <div className={styles.replyInputWrap}>
-                    {slashSuggestions.length > 0 && (
-                      <div className={styles.slashDropdown}>
-                        {slashSuggestions.map(qr => (
-                          <button
-                            type="button"
-                            key={qr.id}
-                            className={styles.slashDropItem}
-                            onClick={() => setReply(qr.text)}
-                          >
-                            <span className={styles.slashDropShortcut}>/{qr.shortcut}</span>
-                            <span className={styles.slashDropTitle}>{qr.title || qr.shortcut}</span>
+                  <div className={styles.emojiWrap}>
+                    <button
+                      type="button"
+                      className={styles.mediaBtn}
+                      onClick={() => setEmojiOpen(v => !v)}
+                      disabled={sending}
+                      title="Emojis"
+                      aria-expanded={emojiOpen}
+                    >
+                      😊
+                    </button>
+                    {emojiOpen && (
+                      <div className={styles.emojiPicker}>
+                        {EMOJIS.map(em => (
+                          <button type="button" key={em} className={styles.emojiItem} onClick={() => insertEmoji(em)}>
+                            {em}
                           </button>
                         ))}
-                      </div>
-                    )}
-                    <textarea
-                      className={styles.replyInput}
-                      rows={2}
-                      placeholder="Escribí tu respuesta... (Enter para enviar)"
-                      value={reply}
-                      onChange={e => setReply(e.target.value)}
-                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(e); } }}
-                      onPaste={handlePaste}
-                      disabled={sending}
-                      spellCheck="true"
-                      lang="es"
-                    />
-                    {quickReplies.length > 0 && (
-                      <div className={styles.qrWrap}>
-                        <button
-                          type="button"
-                          className={styles.qrBtn}
-                          onClick={() => setQrOpen(v => !v)}
-                          title="Respuestas rápidas"
-                        >
-                          ⚡
-                        </button>
-                        {qrOpen && (
-                          <div className={styles.qrDropdown}>
-                            {quickReplies.map(qr => (
-                              <button
-                                type="button"
-                                key={qr.id}
-                                className={styles.qrDropItem}
-                                onClick={() => { setReply(qr.text); setQrOpen(false); }}
-                              >
-                                <span className={styles.qrDropTitle}>
-                                  {qr.shortcut && <code className={styles.qrDropShortcut}>/{qr.shortcut}</code>}
-                                  {qr.title || qr.shortcut}
-                                </span>
-                                <span className={styles.qrDropText}>{qr.text}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
                       </div>
                     )}
                   </div>
@@ -2104,6 +2163,36 @@ export default function Conversations() {
                   >
                     📎
                   </button>
+                  <div className={styles.replyInputWrap}>
+                    {slashSuggestions.length > 0 && (
+                      <div className={styles.slashDropdown}>
+                        {slashSuggestions.map(qr => (
+                          <button
+                            type="button"
+                            key={qr.id}
+                            className={styles.slashDropItem}
+                            onClick={() => setReply(qr.text)}
+                          >
+                            <span className={styles.slashDropShortcut}>/{qr.shortcut}</span>
+                            <span className={styles.slashDropTitle}>{qr.title || qr.shortcut}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    <textarea
+                      ref={replyInputRef}
+                      className={styles.replyInput}
+                      rows={1}
+                      placeholder="Escribí un mensaje (Enter para enviar)"
+                      value={reply}
+                      onChange={e => setReply(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendReply(e); } }}
+                      onPaste={handlePaste}
+                      disabled={sending}
+                      spellCheck="true"
+                      lang="es"
+                    />
+                  </div>
                   <button
                     type="button"
                     className={styles.micBtn}
@@ -2113,10 +2202,17 @@ export default function Conversations() {
                   >
                     🎙️
                   </button>
-                  <button type="submit" className={styles.replyBtn} disabled={sending || !reply.trim()}>
-                    {sending ? '...' : 'Enviar'}
+                  <button
+                    type="submit"
+                    className={styles.sendBtn}
+                    disabled={sending || !reply.trim()}
+                    title="Enviar"
+                    aria-label="Enviar"
+                  >
+                    {sending ? '…' : '➤'}
                   </button>
                 </div>
+                </>
                 )}
               </form>
             ) : (
@@ -2167,6 +2263,25 @@ export default function Conversations() {
             <span className={styles.profileTitle}>Perfil del cliente</span>
           </div>
 
+          <div className={styles.profileHero}>
+            <ConvAvatar conv={selected} size={64} />
+            <span className={styles.profileHeroName}>{customer?.contactName || selected.contactName || selected.contactId}</span>
+            {customer?.firstContactAt && (
+              <span className={styles.profileHeroSince}>Cliente desde {formatMonthYear(customer.firstContactAt)}</span>
+            )}
+          </div>
+
+          {(selected.labels ?? []).length > 0 && (
+            <div className={styles.profileSection}>
+              <div className={styles.profileSectionTitle}>Etiquetas</div>
+              <div className={styles.profileLabels}>
+                {selected.labels.map(l => (
+                  <LabelChip key={l} label={l} labelMap={labelMap} onRemove={!isArchived ? removeLabel : null} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {customer ? (
             <>
               <div className={styles.profileSection}>
@@ -2206,7 +2321,7 @@ export default function Conversations() {
                   </button>
                 </div>
                 {summary ? (
-                  <>
+                  <div className={styles.summaryBox}>
                     <p className={styles.summaryText}>{summary.text}</p>
                     <div className={styles.summaryMetrics}>
                       <span className={styles.metricChip}>💬 {summary.metrics?.totalMessages ?? '?'} msgs</span>
@@ -2225,7 +2340,7 @@ export default function Conversations() {
                         Generado {formatDate(summary.generatedAt)}
                       </span>
                     )}
-                  </>
+                  </div>
                 ) : (
                   <p className={styles.profileEmpty}>
                     {summaryGenerating ? 'Generando resumen...' : 'Sin resumen. Hacé click en "Generar".'}

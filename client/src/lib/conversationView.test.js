@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { waitLevel, avatarColor, statusPill, AVATAR_PALETTE, resolveAssignee, pillFor, initials, listTime } from './conversationView.js';
+import { waitLevel, avatarColor, statusPill, AVATAR_PALETTE, resolveAssignee, pillFor, initials, listTime, buildTimeline } from './conversationView.js';
 
 describe('waitLevel', () => {
   it('umbrales 5 y 15 minutos', () => {
@@ -98,5 +98,67 @@ describe('listTime', () => {
     expect(listTime(new Date(2026, 9, 3, 9, 0), now)).toBe('03/10');
     expect(listTime({ _seconds: new Date(2026, 9, 20, 9, 5).getTime() / 1000 }, now)).toMatch(/09:05/);
     expect(listTime(null, now)).toBe('');
+  });
+});
+
+describe('buildTimeline', () => {
+  const nameMap = { 'j@techdi.com': 'Joaquín' };
+  const u = c => ({ role: 'user', content: c, timestamp: '2026-10-20T13:00:00Z' });
+  const b = c => ({ role: 'assistant', content: c, timestamp: '2026-10-20T13:01:00Z' });
+  const a = (c, s = 'j@techdi.com') => ({ role: 'admin', content: c, sentBy: s, timestamp: '2026-10-20T13:02:00Z' });
+  const handoffs = msgs => buildTimeline(msgs, { botName: 'TeDi', nameMap }).filter(x => x.kind === 'handoff').map(x => x.text);
+
+  it('avisos de traspaso entre bot y agente', () => {
+    expect(handoffs([u('hola'), b('hola!'), u('persona'), a('soy Joaquín')])).toEqual(['Joaquín tomó la conversación']);
+    expect(handoffs([u('x'), b('y'), a('z'), b('w')])).toEqual(['Joaquín tomó la conversación', 'TeDi volvió a responder']);
+    expect(handoffs([a('primer mensaje'), u('ok'), a('otro')])).toEqual([]);
+    // (el brief pasaba `undefined`, que activa el valor por defecto del fixture; se usa null = sin sentBy)
+    expect(handoffs([b('y'), a('z', null)])).toEqual(['Alguien del equipo tomó la conversación']);
+    expect(handoffs([b('y'), a('[Difusión] promo'), b('w')])).toEqual([]);
+    expect(handoffs([b('y'), u('a'), u('b'), b('z')])).toEqual([]);
+  });
+
+  it('el aviso va justo antes del mensaje que cambia de responsable', () => {
+    const tl = buildTimeline([b('y'), u('p'), a('z')], { botName: 'TeDi', nameMap, now: new Date('2026-10-20T15:00:00Z') });
+    expect(tl.map(x => x.kind)).toEqual(['day', 'msg', 'msg', 'handoff', 'msg']);
+    expect(tl[4].msg.content).toBe('z');
+    expect(tl[4].index).toBe(2);
+  });
+
+  it('un agente distinto también es un traspaso', () => {
+    const map2 = { ...nameMap, 'm@techdi.com': 'Mica' };
+    const tl = buildTimeline([a('uno'), a('dos', 'm@techdi.com'), a('tres', 'desconocido@x.com')], { botName: 'TeDi', nameMap: map2 });
+    expect(tl.filter(x => x.kind === 'handoff').map(x => x.text)).toEqual(['Mica tomó la conversación', 'Alguien del equipo tomó la conversación']);
+  });
+
+  it('separadores de día en hora de Argentina: HOY, AYER o "lun 19 oct"', () => {
+    const now = new Date('2026-10-20T15:00:00Z'); // 12:00 en Argentina
+    const msgs = [
+      { role: 'user', content: '1', timestamp: '2026-10-18T14:00:00Z' }, // dom 18 oct
+      { role: 'user', content: '2', timestamp: { _seconds: Date.parse('2026-10-19T14:00:00Z') / 1000 } }, // lun 19 → AYER
+      { role: 'user', content: '3', timestamp: '2026-10-20T02:30:00Z' }, // 23:30 AR del 19 → sigue AYER
+      { role: 'user', content: '4', timestamp: '2026-10-20T03:30:00Z' }, // 00:30 AR del 20 → HOY
+      { role: 'user', content: '5', timestamp: '2026-10-20T13:00:00Z' },
+    ];
+    const days = buildTimeline(msgs, { botName: 'TeDi', nameMap, now }).filter(x => x.kind === 'day').map(x => x.label);
+    expect(days).toEqual(['dom 18 oct', 'AYER', 'HOY']);
+    const older = buildTimeline([{ role: 'user', content: 'x', timestamp: '2026-10-12T15:00:00Z' }], { now }).filter(x => x.kind === 'day');
+    expect(older[0].label).toBe('lun 12 oct');
+  });
+
+  it('las claves de día y aviso son estables y únicas', () => {
+    const msgs = [b('y'), a('z'), b('w')];
+    const k1 = buildTimeline(msgs, { botName: 'TeDi', nameMap }).filter(x => x.kind !== 'msg').map(x => x.key);
+    const k2 = buildTimeline(msgs, { botName: 'TeDi', nameMap }).filter(x => x.kind !== 'msg').map(x => x.key);
+    expect(k1).toEqual(k2);
+    expect(new Set(k1).size).toBe(k1.length);
+  });
+
+  it('tolera lista vacía, mensajes sin fecha y sin botName', () => {
+    expect(buildTimeline([], {})).toEqual([]);
+    expect(buildTimeline(undefined, {})).toEqual([]);
+    const tl = buildTimeline([{ role: 'admin', content: 'x' }, { role: 'assistant', content: 'y' }], {});
+    expect(tl.filter(x => x.kind === 'handoff').map(x => x.text)).toEqual(['Bot volvió a responder']);
+    expect(tl.some(x => x.kind === 'day')).toBe(false);
   });
 });
