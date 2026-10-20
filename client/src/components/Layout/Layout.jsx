@@ -1,9 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useBrand } from '../../contexts/BrandContext';
+import { authFetch, BASE_URL } from '../../lib/api';
 import styles from './Layout.module.css';
 
 const COLLAPSED_KEY = 'techdi_sidebar_collapsed';
+const AWAITING_POLL_MS = 30000;
 
 function PageLoader() {
   return (
@@ -50,13 +53,31 @@ function canAccess(role, minRole) {
 
 export default function Layout() {
   const { agent, logout } = useAuth();
+  const { businessName } = useBrand();
   const navigate = useNavigate();
+  const [awaiting, setAwaiting] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
   }, [collapsed]);
+
+  // Contador rojo de "esperando agente" en Conversaciones.
+  useEffect(() => {
+    let alive = true;
+    async function load() {
+      try {
+        const res = await authFetch(BASE_URL + '/api/stats?period=day');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (alive) setAwaiting(Number(data?.awaitingAgent) || 0);
+      } catch { /* sin contador si falla */ }
+    }
+    load();
+    const id = setInterval(load, AWAITING_POLL_MS);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
 
   function closeMenu() { setMenuOpen(false); }
 
@@ -67,7 +88,7 @@ export default function Layout() {
         <button className={styles.hamburger} onClick={() => setMenuOpen(v => !v)} aria-label="Menú">
           <span /><span /><span />
         </button>
-        <span className={styles.mobileBrand}>TechDI</span>
+        <span className={styles.mobileBrand}>{businessName}</span>
       </header>
 
       {/* Backdrop */}
@@ -75,9 +96,9 @@ export default function Layout() {
 
       <aside className={`${styles.sidebar} ${menuOpen ? styles.sidebarOpen : ''} ${collapsed ? styles.sidebarCollapsed : ''}`}>
         <div className={styles.brand}>
-          <div className={styles.brandLogo}>T</div>
+          <div className={styles.brandLogo}>{(businessName || 'T').trim().charAt(0).toUpperCase()}</div>
           <div className={styles.brandText}>
-            <span className={styles.brandName}>TechDI</span>
+            <span className={styles.brandName}>{businessName}</span>
             <span className={styles.brandSub}>Bot Dashboard</span>
           </div>
         </div>
@@ -104,6 +125,9 @@ export default function Layout() {
             >
               <Icon className={styles.navIcon} />
               <span className={styles.navLabel}>{label}</span>
+              {to === '/conversations' && awaiting > 0 && (
+                <span className={styles.navBadge} aria-label={`${awaiting} esperando agente`}>{awaiting > 99 ? '99+' : awaiting}</span>
+              )}
             </NavLink>
           ))}
         </nav>

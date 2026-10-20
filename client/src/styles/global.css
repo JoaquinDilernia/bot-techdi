@@ -1,49 +1,69 @@
 /* ============================================
    TECHDI BOT — Design System
-   Paleta: beige cálido / carbón / rojo
+   Paleta: WhatsApp nativo (marca configurable)
    ============================================ */
 
 :root {
-  /* Colores base */
-  --color-bg: #f5f2ee;
-  --color-surface: #ffffff;
-  --color-surface-alt: #ede9e3;
-  --color-surface-hover: #e6e2db;
-  --color-border: #ddd8d0;
-  --color-border-strong: #c8c2b8;
+  /* Marca (la pisa BrandProvider desde Config) */
+  --brand: #0f766e;
+  --brand-soft: #e7f1f1;
+  --brand-ink: #0a4d47;
 
-  /* Brand — carbón */
-  --color-primary: #343535;
-  --color-primary-dark: #1e1f1f;
-  --color-primary-light: #5c5d5d;
-  --color-primary-subtle: #efece8;
-  --color-primary-bg: #e4e1dc;
+  /* WhatsApp nativo */
+  --wpp-out: #d9fdd3;
+  --chat-bg: #efeae2;
+  --chat-pattern: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cg fill='none' stroke='%23d8d1c4' stroke-width='1.2'%3E%3Ccircle cx='14' cy='16' r='5'/%3E%3Cpath d='M50 10l6 6-6 6'/%3E%3Crect x='30' y='48' width='12' height='9' rx='2'/%3E%3Cpath d='M64 52c4 0 6 3 6 6'/%3E%3Cpath d='M8 60l6-4 4 6'/%3E%3C/g%3E%3C/svg%3E");
+  --rail: #0f2a2a;
+  --ink: #111b21;
+  --mute: #667781;
+  --line: #e9edef;
+  --soft: #f0f2f5;
+  --st-wait: #e8473f;
+  --st-warn: #f59e0b;
+  --st-agent: #6d28d9;
+  --st-ok: #16a34a;
+  --st-label: #9a6a00;
+
+  /* Colores base (nombres legacy, remapeados a la paleta nueva) */
+  --color-bg: #f7f8f9;
+  --color-surface: #ffffff;
+  --color-surface-alt: #f0f2f5;
+  --color-surface-hover: #e9edef;
+  --color-border: #e9edef;
+  --color-border-strong: #d1d7db;
+
+  /* Brand */
+  --color-primary: var(--brand);
+  --color-primary-dark: var(--brand-ink);
+  --color-primary-light: var(--brand);
+  --color-primary-subtle: var(--brand-soft);
+  --color-primary-bg: var(--brand-soft);
 
   /* Texto */
-  --color-text: #1c1a18;
-  --color-text-muted: #706860;
-  --color-text-faint: #a8a09a;
+  --color-text: var(--ink);
+  --color-text-muted: var(--mute);
+  --color-text-faint: #8696a0;
   --color-text-on-primary: #ffffff;
 
   /* Status chips */
-  --color-status-bot: #3a7fc1;
-  --color-status-bot-bg: #edf4fd;
-  --color-status-urgent: #c44040;
-  --color-status-urgent-bg: #fdf0f0;
-  --color-status-escalated: #7c5cbf;
-  --color-status-escalated-bg: #f3effd;
-  --color-status-resolved: #3d9e6a;
-  --color-status-resolved-bg: #edf7f2;
-  --color-status-waiting: #a08060;
-  --color-status-waiting-bg: #f5f0ea;
+  --color-status-bot: #0f766e;
+  --color-status-bot-bg: #e7f1f1;
+  --color-status-urgent: var(--st-wait);
+  --color-status-urgent-bg: #fdeceb;
+  --color-status-escalated: var(--st-agent);
+  --color-status-escalated-bg: #f1ebfd;
+  --color-status-resolved: var(--st-ok);
+  --color-status-resolved-bg: #e8f6ed;
+  --color-status-waiting: var(--st-label);
+  --color-status-waiting-bg: #fff6dd;
 
   /* Estados */
-  --color-success: #3d9e6a;
-  --color-success-bg: #edf7f2;
-  --color-warning: #a08060;
-  --color-warning-bg: #f5f0ea;
-  --color-error: #c44040;
-  --color-error-bg: #fdf0f0;
+  --color-success: var(--st-ok);
+  --color-success-bg: #e8f6ed;
+  --color-warning: var(--st-label);
+  --color-warning-bg: #fff6dd;
+  --color-error: #d93a32;
+  --color-error-bg: #fdeceb;
 
   /* Canales */
   --color-whatsapp: #25d366;
@@ -66,7 +86,7 @@
   --radius-full: 9999px;
 
   /* Tipografía */
-  --font-sans: 'Poppins', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-sans: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-size-xs: 11px;
   --font-size-sm: 12px;
   --font-size-base: 13px;
@@ -135,3 +155,24 @@ ul, ol { list-style: none; }
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) { outline: none; }
+
+/* ---- Animaciones de entrada (solo bajo .is-entering) ---- */
+.is-entering .anim-rise { opacity: 0; transform: translateY(10px); animation: animRise .5s cubic-bezier(.2,.8,.2,1) forwards; animation-delay: var(--d, 0ms); }
+.is-entering .anim-pop { opacity: 0; transform: scale(.92) translateY(6px); transform-origin: bottom left; animation: animPop .45s cubic-bezier(.2,1.4,.4,1) forwards; animation-delay: var(--d, 0ms); }
+.is-entering .anim-grow-y { transform-origin: bottom; transform: scaleY(0); animation: animGrowY .8s cubic-bezier(.2,.8,.2,1) forwards; animation-delay: var(--d, 0ms); }
+.is-entering .anim-grow-x { transform-origin: left; transform: scaleX(0); animation: animGrowX .9s cubic-bezier(.2,.8,.2,1) forwards; animation-delay: var(--d, 0ms); }
+.is-entering .anim-draw { stroke-dasharray: 600; stroke-dashoffset: 600; animation: animDraw 1.4s ease forwards; animation-delay: var(--d, 0ms); }
+
+@keyframes animRise { to { opacity: 1; transform: none; } }
+@keyframes animPop { to { opacity: 1; transform: none; } }
+@keyframes animGrowY { to { transform: scaleY(1); } }
+@keyframes animGrowX { to { transform: scaleX(1); } }
+@keyframes animDraw { to { stroke-dashoffset: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .is-entering .anim-rise,
+  .is-entering .anim-pop,
+  .is-entering .anim-grow-y,
+  .is-entering .anim-grow-x,
+  .is-entering .anim-draw { animation: none; opacity: 1; transform: none; stroke-dasharray: none; stroke-dashoffset: 0; }
+}
