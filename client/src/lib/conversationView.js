@@ -109,11 +109,14 @@ function dayLabel(ymd, now) {
 
 const isBroadcast = (msg) => typeof msg?.content === 'string' && msg.content.startsWith('[Difusión');
 
-/** Quién respondió este mensaje: 'bot', el `sentBy` del agente (o 'agent'), o null (cliente / difusión). */
+/**
+ * Tipo de responsable de este mensaje: 'bot', 'agent' o null (cliente / difusión).
+ * Solo el cambio de tipo (bot ⇄ agente) genera aviso; entre agentes no.
+ */
 function responsibleOf(msg) {
   if (isBroadcast(msg)) return null;
   if (msg?.role === 'assistant') return 'bot';
-  if (msg?.role === 'admin') return msg.sentBy || 'agent';
+  if (msg?.role === 'admin') return 'agent';
   return null;
 }
 

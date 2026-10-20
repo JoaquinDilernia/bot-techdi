@@ -125,10 +125,12 @@ describe('buildTimeline', () => {
     expect(tl[4].index).toBe(2);
   });
 
-  it('un agente distinto también es un traspaso', () => {
+  it('entre agentes no hay aviso: solo cambia el tipo bot ⇄ agente', () => {
     const map2 = { ...nameMap, 'm@techdi.com': 'Mica' };
-    const tl = buildTimeline([a('uno'), a('dos', 'm@techdi.com'), a('tres', 'desconocido@x.com')], { botName: 'TeDi', nameMap: map2 });
-    expect(tl.filter(x => x.kind === 'handoff').map(x => x.text)).toEqual(['Mica tomó la conversación', 'Alguien del equipo tomó la conversación']);
+    const tl = buildTimeline([a('uno'), a('dos', 'm@techdi.com'), a('tres', 'desconocido@x.com'), a('cuatro', null)], { botName: 'TeDi', nameMap: map2 });
+    expect(tl.filter(x => x.kind === 'handoff')).toEqual([]);
+    expect(handoffs([b('y'), a('x', null), a('z')])).toEqual(['Alguien del equipo tomó la conversación']);
+    expect(handoffs([b('y'), a('x'), a('z', 'otro@x.com')])).toEqual(['Joaquín tomó la conversación']);
   });
 
   it('separadores de día en hora de Argentina: HOY, AYER o "lun 19 oct"', () => {
