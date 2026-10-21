@@ -2135,6 +2135,51 @@
   }
 }
 
+/* ==================== NOTEBOOK (769–1440px) ====================
+   Con menú + lista + chat + perfil no entra cómodo: el perfil arranca
+   cerrado y se abre como panel deslizable con el botón 👤, igual que en
+   mobile. La lista se angosta un poco para dejarle más aire al chat. */
+@media (min-width: 769px) and (max-width: 1440px) {
+  .sidebar { width: min(var(--convlist-width), 280px); }
+
+  .profileToggleBtn { display: grid; }
+
+  .profileCloseBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    background: none;
+    border: none;
+    font-size: 16px;
+    cursor: pointer;
+    color: var(--color-text);
+  }
+
+  .profilePanel {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 320px;
+    z-index: 30;
+    box-shadow: -4px 0 16px rgba(0, 0, 0, 0.15);
+    transform: translateX(100%);
+    transition: transform var(--transition-fast, 0.2s) ease;
+  }
+
+  .profilePanelOpen { transform: translateX(0); }
+
+  .profileBackdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.25);
+    z-index: 25;
+  }
+}
+
 /* ==================== ARCHIVOS, BUSCADOR Y REENVÍO ==================== */
 .msgSticker {
   width: 120px;

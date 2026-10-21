@@ -64,6 +64,21 @@
 .ic_agent { background: #ede9fe; }
 .ic_bot { background: #fff4d6; }
 
+/* Notebook: menos aire para que entre todo sin scroll. */
+@media (max-width: 1440px) {
+  .page { padding: 16px 20px; }
+  .grid { grid-template-columns: minmax(0, 1fr) 270px; gap: 14px; }
+  .kpis { margin: 12px 0; }
+}
+/* Pantallas grandes: usar más ancho y letra un poco más grande. */
+@media (min-width: 1680px) {
+  .page { max-width: 1440px; padding: 28px 36px; }
+  .grid { grid-template-columns: minmax(0, 1fr) 340px; gap: 22px; }
+  .hello { font-size: 26px; }
+  .msg { font-size: 14px; }
+  .kpi { padding: 16px; }
+  .kpi strong { font-size: 28px; }
+}
 @media (max-width: 960px) {
   .grid { grid-template-columns: 1fr; }
   .kpis { grid-template-columns: repeat(2, 1fr); }

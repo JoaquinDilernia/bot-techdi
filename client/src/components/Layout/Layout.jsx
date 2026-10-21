@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useBrand } from '../../contexts/BrandContext';
 import { authFetch, BASE_URL } from '../../lib/api';
@@ -25,30 +25,52 @@ function PageLoader() {
 }
 
 // minRole: undefined = all, 'atencion_cliente' = not operador, 'admin' = only admin
-const NAV_ITEMS = [
-  { to: '/conversations', label: 'Conversaciones',  icon: IconChat },
-  { to: '/customers',     label: 'Contactos',       icon: IconContacts,   minRole: 'atencion_cliente' },
-  { to: '/campaigns',     label: 'Difusiones',      icon: IconMegaphone,  minRole: 'atencion_cliente' },
-  { to: '/dashboard',     label: 'Dashboard',       icon: IconDashboard,  minRole: 'atencion_cliente' },
-  { to: '/stats',         label: 'Estadísticas',    icon: IconChart,      minRole: 'atencion_cliente' },
-  { to: '/knowledge',     label: 'Knowledge Base',  icon: IconBook,       minRole: 'atencion_cliente' },
-  { to: '/areas',         label: 'Áreas',           icon: IconDepartment, minRole: 'atencion_cliente' },
-  { to: '/proyectos',     label: 'Proyectos',       icon: IconFolder },
-  { to: '/tickets',       label: 'Tickets',         icon: IconTicket },
-  { to: '/labels',        label: 'Etiquetas',       icon: IconTag,        minRole: 'atencion_cliente' },
-  { to: '/quick-replies', label: 'Resp. Rápidas',   icon: IconZap,        minRole: 'atencion_cliente' },
-  { to: '/templates',     label: 'Plantillas',      icon: IconTemplate,   minRole: 'atencion_cliente' },
-  { to: '/simulator',     label: 'Simulador',       icon: IconFlask,      minRole: 'atencion_cliente' },
-  { to: '/config',        label: 'Configuración',   icon: IconSettings,   minRole: 'atencion_cliente' },
-  { to: '/costs',         label: 'Costos',          icon: IconDollar,     minRole: 'admin' },
-  { to: '/users',         label: 'Usuarios',        icon: IconUsers,      minRole: 'admin' },
+// Grupos del menú: el primero (sin título) es el uso diario; los demás tienen
+// título y se pueden colapsar.
+const NAV_GROUPS = [
+  { id: 'main', items: [
+    { to: '/dashboard',     label: 'Dashboard',       icon: IconDashboard,  minRole: 'atencion_cliente' },
+    { to: '/conversations', label: 'Conversaciones',  icon: IconChat },
+    { to: '/stats',         label: 'Estadísticas',    icon: IconChart,      minRole: 'atencion_cliente' },
+  ] },
+  { id: 'clientes', label: 'Clientes', items: [
+    { to: '/customers',     label: 'Contactos',       icon: IconContacts,   minRole: 'atencion_cliente' },
+    { to: '/campaigns',     label: 'Difusiones',      icon: IconMegaphone,  minRole: 'atencion_cliente' },
+    { to: '/templates',     label: 'Plantillas',      icon: IconTemplate,   minRole: 'atencion_cliente' },
+  ] },
+  { id: 'equipo', label: 'Equipo', items: [
+    { to: '/proyectos',     label: 'Proyectos',       icon: IconFolder },
+    { to: '/tickets',       label: 'Tickets',         icon: IconTicket },
+  ] },
+  { id: 'config', label: 'Configuración', items: [
+    { to: '/knowledge',     label: 'Knowledge Base',  icon: IconBook,       minRole: 'atencion_cliente' },
+    { to: '/areas',         label: 'Áreas',           icon: IconDepartment, minRole: 'atencion_cliente' },
+    { to: '/labels',        label: 'Etiquetas',       icon: IconTag,        minRole: 'atencion_cliente' },
+    { to: '/quick-replies', label: 'Resp. Rápidas',   icon: IconZap,        minRole: 'atencion_cliente' },
+    { to: '/simulator',     label: 'Simulador',       icon: IconFlask,      minRole: 'atencion_cliente' },
+    { to: '/config',        label: 'Configuración',   icon: IconSettings,   minRole: 'atencion_cliente' },
+    { to: '/costs',         label: 'Costos',          icon: IconDollar,     minRole: 'admin' },
+    { to: '/users',         label: 'Usuarios',        icon: IconUsers,      minRole: 'admin' },
+  ] },
 ];
 
-function canAccess(role, minRole) {
+const GROUPS_KEY = 'techdi_nav_groups_closed';
+
+export function canAccess(role, minRole) {
   if (!minRole) return true;
   if (minRole === 'admin') return role === 'admin';
   if (minRole === 'atencion_cliente') return role === 'admin' || role === 'atencion_cliente';
   return true;
+}
+
+// Pantalla de entrada después del login: el Dashboard, o Conversaciones para
+// quien no tiene acceso al Dashboard (operadores).
+export function homePath(role) {
+  return canAccess(role, 'atencion_cliente') ? '/dashboard' : '/conversations';
+}
+
+function readClosedGroups() {
+  try { return JSON.parse(localStorage.getItem(GROUPS_KEY)) || {}; } catch { return {}; }
 }
 
 export default function Layout() {
@@ -58,10 +80,20 @@ export default function Layout() {
   const [awaiting, setAwaiting] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
+  const [closedGroups, setClosedGroups] = useState(readClosedGroups);
+  const { pathname } = useLocation();
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
   }, [collapsed]);
+
+  useEffect(() => {
+    try { localStorage.setItem(GROUPS_KEY, JSON.stringify(closedGroups)); } catch { /* sin persistir */ }
+  }, [closedGroups]);
+
+  function toggleGroup(id) {
+    setClosedGroups(prev => ({ ...prev, [id]: !prev[id] }));
+  }
 
   // Contador rojo de "esperando agente" en Conversaciones.
   useEffect(() => {
@@ -114,23 +146,45 @@ export default function Layout() {
         </button>
 
         <nav className={styles.nav}>
-          {NAV_ITEMS.filter(item => canAccess(agent?.role, item.minRole)).map(({ to, label, icon: Icon }) => (
-            <NavLink
-              key={to}
-              to={to}
-              onClick={closeMenu}
-              title={collapsed ? label : undefined}
-              className={({ isActive }) =>
-                `${styles.navItem} ${isActive ? styles.navItemActive : ''}`
-              }
-            >
-              <Icon className={styles.navIcon} />
-              <span className={styles.navLabel}>{label}</span>
-              {to === '/conversations' && awaiting > 0 && (
-                <span className={styles.navBadge} aria-label={`${awaiting} esperando agente`}>{awaiting > 99 ? '99+' : awaiting}</span>
-              )}
-            </NavLink>
-          ))}
+          {NAV_GROUPS.map(group => {
+            const items = group.items.filter(item => canAccess(agent?.role, item.minRole));
+            if (!items.length) return null;
+            // El grupo de la pantalla actual siempre se ve, aunque esté cerrado.
+            const hasActive = items.some(item => pathname.startsWith(item.to));
+            const open = !group.label || collapsed || !closedGroups[group.id] || hasActive;
+            return (
+              <div key={group.id} className={styles.navGroup}>
+                {group.label && (
+                  <button
+                    type="button"
+                    className={styles.navGroupTitle}
+                    onClick={() => toggleGroup(group.id)}
+                    aria-expanded={open}
+                  >
+                    <span>{group.label}</span>
+                    <span className={`${styles.navGroupChevron} ${open ? styles.navGroupChevronOpen : ''}`} aria-hidden="true">›</span>
+                  </button>
+                )}
+                {open && items.map(({ to, label, icon: Icon }) => (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    onClick={closeMenu}
+                    title={collapsed ? label : undefined}
+                    className={({ isActive }) =>
+                      `${styles.navItem} ${isActive ? styles.navItemActive : ''}`
+                    }
+                  >
+                    <Icon className={styles.navIcon} />
+                    <span className={styles.navLabel}>{label}</span>
+                    {to === '/conversations' && awaiting > 0 && (
+                      <span className={styles.navBadge} aria-label={`${awaiting} esperando agente`}>{awaiting > 99 ? '99+' : awaiting}</span>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         <div className={styles.sidebarFooter}>
