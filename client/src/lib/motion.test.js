@@ -23,6 +23,6 @@ describe('shouldStartEntry', () => {
     expect(shouldStartEntry(true, false, false, true)).toBe(false);
   });
   it('window covers the longest animation', () => {
-    expect(ENTRY_WINDOW_MS).toBeGreaterThanOrEqual(1600);
+    expect(ENTRY_WINDOW_MS).toBeGreaterThanOrEqual(2340 + 200);
   });
 });
