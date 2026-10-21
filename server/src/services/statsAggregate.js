@@ -43,6 +43,15 @@ export function diffMin(a, b) {
   return (db - da) / 60000;
 }
 
+// Período anterior para comparar: el mismo tramo corrido N días enteros hacia
+// atrás (N = días que abarca el rango actual, mínimo 1). Así "Hoy" a las 10:00
+// se compara con ayer 00:00–10:00, y "7 días" con los 7 días previos.
+export function previousRange(startMs, endMs) {
+  const nDays = Math.max(1, Math.ceil((endMs - startMs) / 86400000));
+  const shift = nDays * 86400000;
+  return { prevStartMs: startMs - shift, prevEndMs: endMs - shift, nDays };
+}
+
 function isInRange(ts, startMs, endMs) {
   const d = toDate(ts);
   return !!d && d.getTime() >= startMs && d.getTime() <= endMs;

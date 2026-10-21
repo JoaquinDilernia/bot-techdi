@@ -2,7 +2,8 @@ import { Router } from 'express';
 import admin from 'firebase-admin';
 import { getDb } from '../services/firebase.service.js';
 import { requireAuth } from '../middleware/requireAuth.js';
-import { aggregateConversations, arMidnight, fromArWallClock, toDate, isoDate, diffMin } from '../services/statsAggregate.js';
+import { aggregateConversations, arMidnight, fromArWallClock, toDate, isoDate, previousRange } from '../services/statsAggregate.js';
+import { waitingSummary } from '../services/waiting.js';
 
 const router = Router();
 router.use(requireAuth);
@@ -46,9 +47,8 @@ router.get('/', async (req, res) => {
     const startMs = start.getTime();
     const endMs = end.getTime();
 
-    // Período anterior: misma duración, termina 1 ms antes de que empiece el actual.
-    const prevEndMs = startMs - 1;
-    const prevStartMs = prevEndMs - (endMs - startMs);
+    // Período anterior: el mismo tramo corrido N días enteros (alineado a medianoche).
+    const { prevStartMs, prevEndMs } = previousRange(startMs, endMs);
 
     const convsInRange = (fromMs, toMs) => db.collection('bot-techdi_conversations')
       .where('updatedAt', '>=', admin.firestore.Timestamp.fromMillis(fromMs))
@@ -78,16 +78,11 @@ router.get('/', async (req, res) => {
       .filter(c => c.status !== 'resolved' && c.status !== 'bot_archived')
       .length;
 
-    // Esperando agente: cuántas conversaciones escaladas siguen sin resolver
-    // AHORA MISMO, sin acotar por período — una conversación derivada hace
-    // días y sin responder todavía debe seguir contando como backlog, aunque
-    // no tenga actividad "de hoy".
-    const awaitingDocs = awaitingSnap.docs.map(d => d.data());
-    const awaitingAgent = awaitingDocs.length;
-    const now = new Date();
-    const oldestAwaitingMin = awaitingDocs.length
-      ? Math.max(...awaitingDocs.map(c => diffMin(c.escalatedAt, now) ?? 0))
-      : null;
+    // Esperando agente: AHORA MISMO, sin acotar por período — una conversación
+    // derivada hace días y sin responder sigue contando como backlog. Misma
+    // regla que la cola de Inicio y la píldora de Conversaciones (waiting.js).
+    const { count: awaitingAgent, oldestMin: oldestAwaitingMin } =
+      waitingSummary(awaitingSnap.docs.map(d => d.data()), agents);
 
     const current = aggregateConversations(conversations, { startMs, endMs, agents, areas, botConfig });
     const prev = aggregateConversations(prevConversations, { startMs: prevStartMs, endMs: prevEndMs, agents, areas, botConfig });
@@ -136,6 +131,24 @@ router.get('/', async (req, res) => {
     });
   } catch (err) {
     console.error('[stats]', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Contador liviano de "esperando" (badge del menú, Inicio). Se monta aparte en
+// app.js con solo requireAuth: los operadores también lo ven.
+export const waitingRouter = Router();
+waitingRouter.get('/', async (req, res) => {
+  try {
+    const db = getDb();
+    const [escalatedSnap, agentsSnap] = await Promise.all([
+      db.collection('bot-techdi_conversations').where('status', '==', 'escalated').get(),
+      db.collection('bot-techdi_agents').get(),
+    ]);
+    const agents = agentsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json(waitingSummary(escalatedSnap.docs.map(d => d.data()), agents));
+  } catch (err) {
+    console.error('[stats/waiting]', err);
     res.status(500).json({ error: err.message });
   }
 });

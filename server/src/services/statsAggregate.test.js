@@ -79,3 +79,31 @@ test('Firestore Timestamps (toDate) y atribución por agente/área', () => {
   assert.deepEqual(r.labelCounts, [{ name: 'vip', count: 1 }]);
   assert.deepEqual(r.byAgent.map(a => [a.id, a.handled, a.messages]), [['bot', 1, 1], ['g1', 1, 1]]);
 });
+
+test('previousRange: "Hoy" a las 10:00 se compara con ayer 00:00–10:00', async () => {
+  const { previousRange } = await import('./statsAggregate.js');
+  const start = Date.parse('2026-10-21T03:00:00Z'); // 21/10 00:00 AR
+  const end = Date.parse('2026-10-21T13:00:00Z');   // 21/10 10:00 AR
+  const r = previousRange(start, end);
+  assert.equal(r.nDays, 1);
+  assert.equal(r.prevStartMs, Date.parse('2026-10-20T03:00:00Z'));
+  assert.equal(r.prevEndMs, Date.parse('2026-10-20T13:00:00Z'));
+});
+
+test('previousRange: semana (6 días + hoy parcial) corre 7 días', async () => {
+  const { previousRange } = await import('./statsAggregate.js');
+  const start = Date.parse('2026-10-15T03:00:00Z');
+  const end = Date.parse('2026-10-21T13:00:00Z');
+  const r = previousRange(start, end);
+  assert.equal(r.nDays, 7);
+  assert.equal(r.prevStartMs, start - 7 * DAY);
+  assert.equal(r.prevEndMs, end - 7 * DAY);
+});
+
+test('previousRange: rango custom de días completos y rango vacío', async () => {
+  const { previousRange } = await import('./statsAggregate.js');
+  const start = Date.parse('2026-10-01T03:00:00Z');
+  const end = start + 10 * DAY - 1; // 10 días completos
+  assert.equal(previousRange(start, end).nDays, 10);
+  assert.equal(previousRange(start, start).nDays, 1);
+});
