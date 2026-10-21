@@ -141,17 +141,17 @@ export default function Dashboard() {
 
   const kpis = [
     {
-      key: 'conv', label: 'Conversaciones', value: stats?.total ?? 0, color: '#0f766e',
+      key: 'conv', label: 'Conversaciones', value: stats?.total ?? 0, color: 'var(--brand)',
       delta: convDelta === null ? null : signed(convDelta, '%'), good: (convDelta ?? 0) >= 0,
       series: trend.map((d) => d.started),
     },
     {
-      key: 'rate', label: `Resolvió ${botName}`, value: rate, suffix: '%', color: '#0f766e',
+      key: 'rate', label: `Resolvió ${botName}`, value: rate, suffix: '%', color: 'var(--brand)',
       delta: rateDelta === null ? null : signed(rateDelta, ' pts'), good: (rateDelta ?? 0) >= 0,
       series: trend.map((d) => (d.started ? Math.round((d.resolvedByBot / d.started) * 100) : 0)),
     },
     {
-      key: 'first', label: '1ª respuesta', text: firstLabel, color: '#0f766e',
+      key: 'first', label: '1ª respuesta', text: firstLabel, color: 'var(--brand)',
       delta: firstDeltaSec === null ? null : signed(firstDeltaSec, 's'), good: (firstDeltaSec ?? 0) <= 0,
       series: null,
     },
@@ -166,7 +166,7 @@ export default function Dashboard() {
 
   return (
     <div className={`${styles.page} ${firstLoad ? 'is-entering' : ''}`}>
-      <header className={`${styles.header} anim-rise`}>
+      <header className={styles.header}>
         <div>
           <h1 className={styles.hello}>{greeting()}, {agent?.name?.split(' ')[0]} 👋</h1>
           <p className={styles.sub}><span className={styles.live} />{todayLabel()} · en vivo</p>
@@ -181,7 +181,7 @@ export default function Dashboard() {
       ) : (
         <div className={styles.grid}>
           <div className={styles.main}>
-            <section className={`${styles.tedi} anim-rise`} style={{ '--d': '120ms' }}>
+            <section className={styles.tedi}>
               <div className={styles.from}><BotFace size={24} />{botName}</div>
               {loading ? (
                 <div className={styles.skelBubbles}>
@@ -223,7 +223,7 @@ export default function Dashboard() {
               ))}
             </div>
 
-            <section className={`${styles.card} anim-rise`} style={{ '--d': '820ms' }}>
+            <section className={styles.card}>
               <div className={styles.cardHead}><b>Te esperan</b><small>ordenadas por tiempo de espera</small></div>
               {loading ? (
                 <>
@@ -254,7 +254,7 @@ export default function Dashboard() {
             </section>
           </div>
 
-          <aside className={`${styles.card} anim-rise`} style={{ '--d': '300ms' }}>
+          <aside className={styles.card}>
             <div className={styles.cardHead}><b>Pasando ahora</b><small><span className={styles.live} /></small></div>
             {loading ? (
               <>

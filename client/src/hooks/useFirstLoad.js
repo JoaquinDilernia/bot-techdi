@@ -1,4 +1,5 @@
-import { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { ENTRY_WINDOW_MS, shouldStartEntry } from '../lib/motion';
 
 function prefersReducedMotion() {
   try {
@@ -8,13 +9,23 @@ function prefersReducedMotion() {
   }
 }
 
-// true desde el primer paso de loading -> false de este montaje (la entrada se anima una sola vez).
+// true solo durante la ventana de entrada que sigue al primer loading -> false de este
+// montaje; después vuelve a false (lo que se monta más tarde no se anima).
 export function useFirstLoad(loading) {
   const prev = useRef(loading);
-  const fired = useRef(false);
-  if (prev.current && !loading && !fired.current && !prefersReducedMotion()) {
-    fired.current = true;
+  const started = useRef(false);
+  const [expired, setExpired] = useState(false);
+  if (shouldStartEntry(prev.current, loading, started.current, prefersReducedMotion())) {
+    started.current = true;
   }
   prev.current = loading;
-  return fired.current;
+  const on = started.current;
+
+  useEffect(() => {
+    if (!on) return undefined;
+    const t = setTimeout(() => setExpired(true), ENTRY_WINDOW_MS);
+    return () => clearTimeout(t);
+  }, [on]);
+
+  return on && !expired;
 }

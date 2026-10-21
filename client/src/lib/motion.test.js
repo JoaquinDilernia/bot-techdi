@@ -10,3 +10,19 @@ describe('countValue', () => {
     expect(countValue(0, 500)).toBe(0);
   });
 });
+
+import { shouldStartEntry, ENTRY_WINDOW_MS } from './motion';
+describe('shouldStartEntry', () => {
+  it('starts once on loading -> loaded', () => {
+    expect(shouldStartEntry(true, false, false, false)).toBe(true);
+    expect(shouldStartEntry(true, false, true, false)).toBe(false);
+    expect(shouldStartEntry(false, false, false, false)).toBe(false);
+    expect(shouldStartEntry(true, true, false, false)).toBe(false);
+  });
+  it('never under reduced motion', () => {
+    expect(shouldStartEntry(true, false, false, true)).toBe(false);
+  });
+  it('window covers the longest animation', () => {
+    expect(ENTRY_WINDOW_MS).toBeGreaterThanOrEqual(1600);
+  });
+});
