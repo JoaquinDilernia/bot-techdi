@@ -746,8 +746,8 @@
 .replyInput {
   width: 100%;
   min-height: 40px;
-  max-height: 140px;
-  field-sizing: content;
+  max-height: 120px; /* el alto lo ajusta Conversations.jsx según el texto */
+  overflow-y: auto;
   border: 0;
   border-radius: 9px;
   padding: 10px 12px;

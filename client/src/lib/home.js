@@ -52,10 +52,13 @@ export function tediSummary(stats, { botName } = {}) { // eslint-disable-line no
   return out;
 }
 
-/** Escaladas que todavía no tomó una persona, de mayor a menor espera. */
+/**
+ * Escaladas que todavía no tomó ni respondió nadie del equipo (misma regla que
+ * pillFor), de mayor a menor espera. La espera corre desde waitingSince ?? escalatedAt.
+ */
 export function waitingQueue(conversations, { areas, nameMap, now = new Date() } = {}) {
   return (conversations || [])
-    .filter((c) => pillFor(c, { areas, nameMap }).tone === 'wait')
+    .filter((c) => !c.firstAgentResponseAt && pillFor(c, { areas, nameMap }).tone === 'wait')
     .map((c) => {
       const since = toMs(c.waitingSince) ?? toMs(c.escalatedAt);
       const waitMin = since === null ? 0 : Math.max(0, Math.floor((now.getTime() - since) / 60000));

@@ -129,7 +129,8 @@ export default function Stats() {
         return r.json();
       })
       .then(d => { if (!cancelled) setData(d); })
-      .catch(err => { if (!cancelled) setError(err.message); })
+      // Sin datos viejos al lado del error: los números serían de otro período.
+      .catch(err => { if (!cancelled) { setData(null); setError(err.message); } })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [period, customFrom, customTo]); // eslint-disable-line react-hooks/exhaustive-deps

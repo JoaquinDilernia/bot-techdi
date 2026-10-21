@@ -72,6 +72,18 @@ describe('pillFor (datos reales: el backend escala con humanMode=true)', () => {
   it('tomada por un agente → nombre', () => {
     expect(pillFor({ status: 'escalated', humanMode: true, assignedTo: 'jo@x.com' }, ctx)).toEqual({ text: 'Joaquín', tone: 'agent' });
   });
+  it('derivada a un área pero un agente ya respondió → tomada (Equipo)', () => {
+    const conv = { status: 'escalated', humanMode: true, assignedTo: 'a1', firstAgentResponseAt: '2026-10-20T14:00:00Z' };
+    expect(pillFor(conv, ctx)).toEqual({ text: 'Equipo', tone: 'agent' });
+    expect(pillFor({ ...conv, assignedTo: null }, ctx)).toEqual({ text: 'Equipo', tone: 'agent' });
+  });
+  it('asignada a un agente y respondida → nombre del agente', () => {
+    const conv = { status: 'escalated', humanMode: true, assignedTo: 'jo@x.com', firstAgentResponseAt: '2026-10-20T14:00:00Z' };
+    expect(pillFor(conv, ctx)).toEqual({ text: 'Joaquín', tone: 'agent' });
+  });
+  it('firstAgentResponseAt sin humanMode no la marca como tomada', () => {
+    expect(pillFor({ status: 'bot', humanMode: false, firstAgentResponseAt: '2026-10-20T14:00:00Z' }, ctx).tone).toBe('bot');
+  });
   it('bot, resuelta y archivada', () => {
     expect(pillFor({ status: 'bot', humanMode: false }, ctx)).toEqual({ text: 'TeDi respondiendo', tone: 'bot' });
     expect(pillFor({}, ctx)).toEqual({ text: 'TeDi respondiendo', tone: 'bot' });

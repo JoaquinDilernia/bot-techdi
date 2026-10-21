@@ -22,6 +22,8 @@ const FILTERS = [
   { value: 'archived',      label: 'Archivados' },
 ];
 
+const COMPOSER_MAX_PX = 120;
+
 function ChannelBadge({ channel }) {
   const cfg = CHANNEL_CONFIG[channel] ?? { label: channel, cls: 'wpp' };
   return <span className={`${styles.badge} ${styles['badge_' + cfg.cls]}`}>{cfg.label}</span>;
@@ -726,6 +728,17 @@ export default function Conversations() {
   const mediaStreamRef = useRef(null);
   const recordTimerRef = useRef(null);
   const appliedDeepLinkRef = useRef(false);
+
+  // Composer que crece con el texto (hasta 120 px). Corre también cuando el
+  // valor cambia por código (respuesta rápida, limpiar después de enviar) y
+  // cuando el textarea se vuelve a montar. Reemplaza a field-sizing, que
+  // Safari/iOS y Firefox no soportan.
+  useLayoutEffect(() => {
+    const el = replyInputRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, COMPOSER_MAX_PX)}px`;
+  }, [reply, selected?.id, selected?.humanMode, recording, recordedAudio]);
 
   const labelMap = Object.fromEntries(allLabels.map(l => [l.name, l.color]));
   const myId = agent?.id;
@@ -2219,7 +2232,7 @@ export default function Conversations() {
               /* ---- Bot is handling the conversation ---- */
               <div className={styles.botFooter}>
                 <span className={styles.botFooterDot} />
-                <span className={styles.botFooterText}>El bot está respondiendo automáticamente</span>
+                <span className={styles.botFooterText}>{botName} está respondiendo automáticamente</span>
                 <button
                   className={styles.takeOverBtn}
                   onClick={() => dispatch('take_over', { agentId: myId })}

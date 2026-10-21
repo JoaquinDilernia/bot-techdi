@@ -52,6 +52,8 @@ describe('waitingQueue', () => {
     { id: 'tomada', status: 'escalated', humanMode: true, assignedTo: 'ag1', waitingSince: ago(30) },
     { id: 'bot', status: 'bot', humanMode: false, waitingSince: ago(40) },
     { id: 'res', status: 'resolved', waitingSince: ago(50) },
+    // Derivada a un área y un agente ya respondió (sin "Intervenir"): no espera.
+    { id: 'respondida', status: 'escalated', humanMode: true, assignedTo: 'ventas', escalatedAt: ago(90), firstAgentResponseAt: ago(80) },
   ];
   it('orders by wait desc and excludes taken / non escalated', () => {
     const q = waitingQueue(convs, { areas, nameMap, now: NOW });

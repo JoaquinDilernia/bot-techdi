@@ -46,8 +46,8 @@
   --color-text-on-primary: #ffffff;
 
   /* Status chips */
-  --color-status-bot: #0f766e;
-  --color-status-bot-bg: #e7f1f1;
+  --color-status-bot: var(--brand);
+  --color-status-bot-bg: var(--brand-soft);
   --color-status-urgent: var(--st-wait);
   --color-status-urgent-bg: #fdeceb;
   --color-status-escalated: var(--st-agent);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authFetch, BASE_URL } from '../lib/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,6 +12,7 @@ import { tediSummary, waitingQueue, activityFeed, kpiDelta, fmt } from '../lib/h
 import styles from './Dashboard.module.css';
 
 const TYPING_MS = 800;
+const POLL_MS = 60000;
 const FEED_ICON = { ok: '✓', handoff: '↪', agent: '👤', bot: '💬' };
 
 function greeting() {
@@ -75,7 +76,10 @@ export default function Dashboard() {
 
   const firstLoad = useFirstLoad(loading);
 
+  const loadingRef = useRef(false);
   const load = useCallback(async () => {
+    if (loadingRef.current) return; // no superponer cargas (botón + polling)
+    loadingRef.current = true;
     setRefreshing(true);
     try {
       const [dayRes, weekRes, convsRes, areasRes, usersRes] = await Promise.all([
@@ -85,6 +89,7 @@ export default function Dashboard() {
         authFetch(BASE_URL + '/api/areas').catch(() => null),
         authFetch(BASE_URL + '/api/auth/users').catch(() => null),
       ]);
+      if (!dayRes.ok || !weekRes.ok || !convsRes.ok) throw new Error('No se pudo cargar el resumen');
       const [dayData, weekData, convsData] = await Promise.all([dayRes.json(), weekRes.json(), convsRes.json()]);
       const areasData = areasRes?.ok ? await areasRes.json() : { areas: [] };
       const users = usersRes?.ok ? await usersRes.json() : [];
@@ -101,6 +106,7 @@ export default function Dashboard() {
     } catch {
       setError(true);
     } finally {
+      loadingRef.current = false;
       setLoading(false);
       setRefreshing(false);
     }
@@ -108,9 +114,10 @@ export default function Dashboard() {
 
   useEffect(() => { load(); }, [load]);
 
-  // Refresco silencioso cada 30 s (no reanima: los números ya contaron una vez).
+  // Refresco silencioso cada 60 s (no reanima: los números ya contaron una vez).
+  // Con la pestaña oculta se saltea el tick.
   useEffect(() => {
-    const t = setInterval(load, 30000);
+    const t = setInterval(() => { if (!document.hidden) load(); }, POLL_MS);
     return () => clearInterval(t);
   }, [load]);
 

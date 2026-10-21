@@ -43,12 +43,14 @@ export function resolveAssignee(assignedTo, { areas = [], nameMap = {} } = {}) {
 /**
  * Píldora a partir de la conversación tal como la manda el backend. El backend
  * escala siempre con humanMode=true (también cuando el bot deriva a un área),
- * así que "la atiende una persona" = humanMode + un agente asignado; derivada a
- * un área o sin asignar cuenta como "Esperando".
+ * así que "la atiende una persona" = humanMode + (un agente asignado o alguien
+ * del equipo ya respondió en este ciclo: firstAgentResponseAt, que el backend
+ * resetea en cada escalamiento). Derivada a un área o sin asignar y sin
+ * respuesta cuenta como "Esperando". Misma regla que server/src/services/waiting.js.
  */
 export function pillFor(conv, { botName, areas, nameMap } = {}) {
   const { areaName, agentName } = resolveAssignee(conv?.assignedTo, { areas, nameMap });
-  const takenByAgent = !!(conv?.humanMode && agentName);
+  const takenByAgent = !!(conv?.humanMode && (agentName || conv?.firstAgentResponseAt));
   const status = conv?.status === 'bot' && conv?.humanMode && !takenByAgent ? 'escalated' : conv?.status;
   return statusPill({ ...conv, status, humanMode: takenByAgent }, { botName, areaName, agentName });
 }

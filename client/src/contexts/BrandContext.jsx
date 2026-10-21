@@ -14,10 +14,10 @@ export function BrandProvider({ children }) {
   useEffect(() => {
     if (!agent) return undefined;
     let alive = true;
-    authFetch(BASE_URL + '/api/config')
+    // /api/config/brand está abierto a cualquier rol (operadores incluidos).
+    authFetch(BASE_URL + '/api/config/brand')
       .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        const c = data?.config;
+      .then((c) => {
         if (!alive || !c) return;
         setBrand({
           botName: c.botName || DEFAULTS.botName,

@@ -67,11 +67,12 @@ export default function Layout() {
   useEffect(() => {
     let alive = true;
     async function load() {
+      if (document.hidden) return; // pestaña oculta: no gastar consultas
       try {
-        const res = await authFetch(BASE_URL + '/api/stats?period=day');
+        const res = await authFetch(BASE_URL + '/api/stats/waiting');
         if (!res.ok) return;
         const data = await res.json();
-        if (alive) setAwaiting(Number(data?.awaitingAgent) || 0);
+        if (alive) setAwaiting(Number(data?.count) || 0);
       } catch { /* sin contador si falla */ }
     }
     load();

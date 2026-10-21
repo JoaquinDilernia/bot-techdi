@@ -59,7 +59,7 @@
 .ev b { font-weight: 600; color: var(--ink); }
 .ev p { color: var(--mute); font-size: 11.5px; margin: 0; }
 .ic { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; flex-shrink: 0; }
-.ic_ok { background: #e0f2f1; }
+.ic_ok { background: var(--brand-soft); }
 .ic_handoff { background: #fdecea; }
 .ic_agent { background: #ede9fe; }
 .ic_bot { background: #fff4d6; }
