@@ -288,7 +288,7 @@ function Hero({ data, botName, rate, animate }) {
           <circle cx="48" cy="48" r={RING_R} fill="none" stroke="#ffffff22" strokeWidth="10" />
           <circle
             className={styles.ring}
-            cx="48" cy="48" r={RING_R} fill="none" stroke="#5eead4" strokeWidth="10" strokeLinecap="round"
+            cx="48" cy="48" r={RING_R} fill="none" style={{ stroke: 'color-mix(in srgb, var(--brand) 45%, white)' }} strokeWidth="10" strokeLinecap="round"
             strokeDasharray={RING_C} strokeDashoffset={RING_C * (1 - (Math.min(rate, 100) / 100) * k)}
             transform="rotate(-90 48 48)"
           />
@@ -303,7 +303,7 @@ function Hero({ data, botName, rate, animate }) {
         </div>
       </div>
       <div className={styles.heroSplit}>
-        <span style={{ '--c': '#5eead4' }}>{botName} {data.resolvedByBot}</span>
+        <span style={{ '--c': 'color-mix(in srgb, var(--brand) 45%, white)' }}>{botName} {data.resolvedByBot}</span>
         <span style={{ '--c': '#ffffff66' }}>Equipo {data.resolvedByAgent}</span>
       </div>
     </div>
