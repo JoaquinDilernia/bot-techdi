@@ -54,7 +54,6 @@ const NAV_GROUPS = [
   ] },
 ];
 
-const GROUPS_KEY = 'techdi_nav_groups_closed';
 
 export function canAccess(role, minRole) {
   if (!minRole) return true;
@@ -69,10 +68,6 @@ export function homePath(role) {
   return canAccess(role, 'atencion_cliente') ? '/dashboard' : '/conversations';
 }
 
-function readClosedGroups() {
-  try { return JSON.parse(localStorage.getItem(GROUPS_KEY)) || {}; } catch { return {}; }
-}
-
 export default function Layout() {
   const { agent, logout } = useAuth();
   const { businessName } = useBrand();
@@ -80,19 +75,16 @@ export default function Layout() {
   const [awaiting, setAwaiting] = useState(0);
   const [menuOpen, setMenuOpen] = useState(false);
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem(COLLAPSED_KEY) === '1');
-  const [closedGroups, setClosedGroups] = useState(readClosedGroups);
+  // Los desplegables arrancan siempre cerrados; no se recuerda qué abrió.
+  const [openGroups, setOpenGroups] = useState({});
   const { pathname } = useLocation();
 
   useEffect(() => {
     localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
   }, [collapsed]);
 
-  useEffect(() => {
-    try { localStorage.setItem(GROUPS_KEY, JSON.stringify(closedGroups)); } catch { /* sin persistir */ }
-  }, [closedGroups]);
-
   function toggleGroup(id) {
-    setClosedGroups(prev => ({ ...prev, [id]: !prev[id] }));
+    setOpenGroups(prev => ({ ...prev, [id]: !prev[id] }));
   }
 
   // Contador rojo de "esperando agente" en Conversaciones.
@@ -151,7 +143,7 @@ export default function Layout() {
             if (!items.length) return null;
             // El grupo de la pantalla actual siempre se ve, aunque esté cerrado.
             const hasActive = items.some(item => pathname.startsWith(item.to));
-            const open = !group.label || collapsed || !closedGroups[group.id] || hasActive;
+            const open = !group.label || collapsed || openGroups[group.id] || hasActive;
             return (
               <div key={group.id} className={styles.navGroup}>
                 {group.label && (
