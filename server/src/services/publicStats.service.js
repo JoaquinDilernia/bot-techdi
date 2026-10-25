@@ -1,13 +1,13 @@
 import { getDb } from './firebase.service.js';
 
 // Contador para la landing: cuántas conversaciones resolvió el bot SIN
-// escalar a un humano, sumado entre los 4 bots. Los 4 comparten el mismo
+// escalar a un humano, sumado entre los bots en producción. Todos comparten el mismo
 // proyecto de Firebase (pedidos-lett-2), así que una sola conexión puede
 // leer las colecciones de todos.
 const RESULT_COLLECTION = 'bot-techdi_public_stats';
 const RESULT_DOC = 'resolved_counter';
 
-// ALTORANCHO / TECHDI / PMCSALUD comparten schema: resolvedAt se setea al
+// ALTORANCHO / TECHDI / PMCSALUD / SELVAGGIO / ENTRENO comparten schema: resolvedAt se setea al
 // cerrar (por el bot o por un agente), escalatedAt solo si en algún momento
 // pasó por un humano. resolvedAt seteado + escalatedAt ausente = lo resolvió
 // el bot solo, de punta a punta (mismo criterio que sus stats.routes.js).
@@ -41,15 +41,17 @@ async function countResolvedByBotGineza() {
 }
 
 export async function computeResolvedByBotTotals() {
-  const [altorancho, techdi, pmcsalud, gineza] = await Promise.all([
+  const [altorancho, techdi, pmcsalud, selvaggio, entreno, gineza] = await Promise.all([
     countResolvedByBotStandard('bot-altorancho_conversations'),
     countResolvedByBotStandard('bot-techdi_conversations'),
     countResolvedByBotStandard('bot-pmcsalud_conversations'),
+    countResolvedByBotStandard('bot-selvaggio_conversations'),
+    countResolvedByBotStandard('bot-entreno_conversations'),
     countResolvedByBotGineza(),
   ]);
 
-  const byBot = { altorancho, gineza, techdi, pmcsalud };
-  const total = altorancho + gineza + techdi + pmcsalud;
+  const byBot = { altorancho, gineza, techdi, pmcsalud, selvaggio, entreno };
+  const total = Object.values(byBot).reduce((a, b) => a + b, 0);
 
   const db = getDb();
   await db.collection(RESULT_COLLECTION).doc(RESULT_DOC).set({
