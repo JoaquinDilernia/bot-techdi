@@ -7,6 +7,7 @@ import {
   listProspects,
   setProspectsStatus,
   getProspectSummary,
+  getProspectCatalog,
 } from '../services/prospect.service.js';
 
 const router = Router();
@@ -14,7 +15,7 @@ const router = Router();
 router.get('/', async (req, res) => {
   try {
     const [prospects, config, summary] = await Promise.all([listProspects(), getProspectConfig(), getProspectSummary()]);
-    res.json({ prospects, config, summary });
+    res.json({ prospects, config, summary, catalog: getProspectCatalog() });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

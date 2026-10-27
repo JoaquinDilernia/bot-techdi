@@ -9,7 +9,7 @@ export async function getAllTemplates() {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-export async function createTemplate({ name, displayName, bodyText, language, category, params, buttons }) {
+export async function createTemplate({ name, displayName, bodyText, language, category, params, buttons, examples }) {
   const cleanName = name.trim();
   const cleanLanguage = language?.trim() || 'es_AR';
   const cleanParams = Array.isArray(params) ? params : [];
@@ -31,6 +31,7 @@ export async function createTemplate({ name, displayName, bodyText, language, ca
       bodyText: bodyText.trim(),
       params: cleanParams,
       buttons: cleanButtons,
+      examples: Array.isArray(examples) ? examples : [],
     });
     metaStatus = result.status ?? 'PENDING';
   } catch (err) {

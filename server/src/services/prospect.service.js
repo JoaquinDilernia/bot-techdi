@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import axios from 'axios';
+import admin from 'firebase-admin';
 import { getDb } from './firebase.service.js';
 import { qualifyProspects } from './claude.service.js';
 import { sendWhatsAppTemplate, sendWhatsAppMessage, fetchPhoneQuality } from './meta.service.js';
@@ -9,6 +10,7 @@ import { getAllTemplates } from './template.service.js';
 import { toWaContactId, isArgentineMobile } from './phone.js';
 import { isWithinBusinessHoursAt } from './businessHours.js';
 import { arMidnight } from './statsAggregate.js';
+import { GROUPS, RUBROS, PROVINCES, getRubro, getZone } from '../data/prospectCatalog.js';
 
 // ─────────────────────────── Prospección ───────────────────────────────────
 // Busca negocios en Google Maps (Places API), los califica con Claude y les
@@ -25,6 +27,9 @@ const PROSPECTS = 'bot-techdi_prospects';
 const CUSTOMERS = 'bot-techdi_customers';
 const CONFIG_COLLECTION = 'bot-techdi_config';
 const CONFIG_DOC = 'prospecting';
+// Una fila por combinación rubro × zona ya buscada: cuándo, cuántos trajo y
+// si se agotó (Maps ya no devuelve nada nuevo → se saltea por un tiempo).
+const RUNS = 'bot-techdi_prospect_runs';
 
 const PLACES_URL = 'https://places.googleapis.com/v1/places:searchText';
 const PLACES_FIELDS = [
@@ -37,6 +42,8 @@ const PLACES_MAX_PAGES = 3; // Places no devuelve más de 60 resultados (3 pági
 const SENDS_PER_TICK = 2;              // el cron corre cada 15 min: el cupo se reparte en el día
 const SEND_GAP_MS = 45 * 1000;         // separación entre envíos dentro de un mismo tick
 const QUALITY_CACHE_MS = 30 * 60 * 1000;
+const MAX_COMBOS_PER_RUN = 8;          // tope de búsquedas en Maps por corrida (costo y tiempo)
+const EXHAUSTED_DAYS = 90;             // una combinación agotada se vuelve a probar a los 3 meses
 
 // Estados que todavía no recibieron mensaje — cuentan como "cola".
 const QUEUE_STATUSES = ['pendiente', 'aprobado'];
@@ -52,7 +59,10 @@ const DEFAULT_CONFIG = {
   paused: false,
   pausedReason: null,
   pausedAt: null,
-  searches: [],
+  rubroIds: [],
+  zoneIds: [],
+  // Plantilla por grupo de rubros (gastronomía, turnos, comercios, servicios).
+  templates: Object.fromEntries(Object.entries(GROUPS).map(([k, g]) => [k, g.template])),
   lastQuality: null,
 };
 
@@ -77,41 +87,30 @@ function configRef() {
 
 export async function getProspectConfig() {
   const doc = await configRef().get();
-  return { ...DEFAULT_CONFIG, ...(doc.exists ? doc.data() : {}) };
-}
-
-function cleanSearch(s) {
-  return {
-    id: s.id || crypto.randomBytes(4).toString('hex'),
-    rubro: String(s.rubro ?? '').trim(),
-    zona: String(s.zona ?? '').trim(),
-    offer: String(s.offer ?? '').trim(),
-    templateName: String(s.templateName ?? '').trim(),
-    language: String(s.language ?? 'es_AR').trim() || 'es_AR',
-    paramsTemplate: Array.isArray(s.paramsTemplate) ? s.paramsTemplate.map(p => String(p ?? '')) : [],
-    active: s.active !== false,
-    lastRunAt: s.lastRunAt ?? null,
-    lastNewCount: s.lastNewCount ?? null,
-  };
+  const data = doc.exists ? doc.data() : {};
+  return { ...DEFAULT_CONFIG, ...data, templates: { ...DEFAULT_CONFIG.templates, ...(data.templates ?? {}) } };
 }
 
 export async function updateProspectConfig(patch) {
-  const current = await getProspectConfig();
   const update = {};
   if (patch.enabled !== undefined) update.enabled = !!patch.enabled;
   if (patch.autoApprove !== undefined) update.autoApprove = !!patch.autoApprove;
   if (patch.dailyCap !== undefined) {
     update.dailyCap = Math.max(1, Math.min(100, parseInt(patch.dailyCap, 10) || DEFAULT_CONFIG.dailyCap));
   }
-  if (Array.isArray(patch.searches)) {
-    // Conservar lastRunAt/lastNewCount de las búsquedas que ya existían — el
-    // panel no los manda de vuelta y se perdería la rotación entre búsquedas.
-    update.searches = patch.searches
-      .map(s => cleanSearch({ ...current.searches.find(c => c.id === s.id), ...s }))
-      .filter(s => s.rubro && s.zona);
+  if (Array.isArray(patch.rubroIds)) update.rubroIds = [...new Set(patch.rubroIds)].filter(id => getRubro(id));
+  if (Array.isArray(patch.zoneIds)) update.zoneIds = [...new Set(patch.zoneIds)].filter(id => getZone(id));
+  if (patch.templates && typeof patch.templates === 'object') {
+    update.templates = Object.fromEntries(
+      Object.keys(GROUPS).map(k => [k, String(patch.templates[k] ?? '').trim() || GROUPS[k].template])
+    );
   }
   await configRef().set(update, { merge: true });
   return getProspectConfig();
+}
+
+export function getProspectCatalog() {
+  return { groups: GROUPS, rubros: RUBROS, provinces: PROVINCES };
 }
 
 export async function pauseProspecting(reason) {
@@ -172,7 +171,7 @@ export async function handleTemplateStatusWebhook(value = {}) {
   const name = value.message_template_name;
   if (!['PAUSED', 'DISABLED', 'FLAGGED'].includes(event) || !name) return;
   const config = await getProspectConfig();
-  if (config.searches.some(s => s.templateName === name)) {
+  if (Object.values(config.templates).includes(name)) {
     await pauseProspecting(`Meta puso la plantilla "${name}" en estado ${event}.`);
   }
 }
@@ -209,29 +208,21 @@ function mapPlace(p) {
   };
 }
 
-function interpolateParams(paramsTemplate, ctx) {
-  return paramsTemplate.map(tpl => (tpl ?? '')
-    .replace(/\{\{\s*negocio\s*\}\}/gi, ctx.negocio)
-    .replace(/\{\{\s*rubro\s*\}\}/gi, ctx.rubro)
-    .replace(/\{\{\s*zona\s*\}\}/gi, ctx.zona)
-    // Meta rechaza parámetros con saltos de línea o tabs.
-    .replace(/[\n\t]+/g, ' ')
-    .trim());
-}
-
 function renderTemplate(bodyText, params) {
   return (bodyText ?? '').replace(/\{\{(\d+)\}\}/g, (m, n) => params[Number(n) - 1] ?? m);
 }
 
 /**
- * Corre UNA búsqueda guardada: trae hasta 3 páginas de Places, descarta lo
- * que no sirve (cerrados, fijos, ya contactados, ya clientes), califica con
- * Claude y guarda los nuevos prospectos. Devuelve cuántos agregó.
+ * Corre UNA combinación rubro × zona: trae hasta 3 páginas de Places,
+ * descarta lo que no sirve (cerrados, fijos, ya contactados, ya clientes),
+ * califica con Claude y guarda los nuevos prospectos.
  */
-async function runSearch(search, { maxNew, autoApprove, templates }) {
+async function runCombo({ id: comboId, rubro, zone }, { maxNew, autoApprove, templates, templateNames }) {
   const db = getDb();
-  const template = templates.find(t => t.name === search.templateName);
-  const textQuery = `${search.rubro} en ${search.zona}`;
+  const group = GROUPS[rubro.group];
+  const templateName = templateNames[rubro.group] || group.template;
+  const template = templates.find(t => t.name === templateName);
+  const textQuery = `${rubro.query} en ${zone.query}`;
 
   const candidates = [];
   const seen = new Set();
@@ -265,11 +256,13 @@ async function runSearch(search, { maxNew, autoApprove, templates }) {
   const batch = candidates.slice(0, maxNew);
   let added = 0;
   if (batch.length > 0) {
-    const results = await qualifyProspects(batch, { rubro: search.rubro, zona: search.zona, offer: search.offer });
+    const results = await qualifyProspects(batch, { rubro: rubro.label, zona: `${zone.name} (${zone.province})`, offer: group.offer });
     const writes = db.batch();
     batch.forEach((p, i) => {
       const q = results[i];
-      const params = interpolateParams(search.paramsTemplate, { negocio: q.shortName, rubro: search.rubro, zona: search.zona });
+      // Las plantillas de prospección tienen una sola variable: el nombre del
+      // negocio. Meta rechaza parámetros con saltos de línea o tabs.
+      const params = [q.shortName.replace(/[\n\t]+/g, ' ')];
       const status = !q.fit ? 'descartado' : (autoApprove && template?.metaStatus === 'APPROVED') ? 'aprobado' : 'pendiente';
       if (q.fit) added++;
       writes.set(db.collection(PROSPECTS).doc(p.contactId), {
@@ -277,12 +270,17 @@ async function runSearch(search, { maxNew, autoApprove, templates }) {
         shortName: q.shortName,
         score: q.score,
         scoreReason: q.reason,
-        searchId: search.id,
-        rubro: search.rubro,
-        zona: search.zona,
-        offer: search.offer,
-        templateName: search.templateName,
-        language: search.language,
+        comboId,
+        rubroId: rubro.id,
+        rubro: rubro.label,
+        group: rubro.group,
+        zoneId: zone.id,
+        zona: zone.name,
+        provinciaId: zone.provinceId,
+        provincia: zone.province,
+        offer: group.offer,
+        templateName,
+        language: template?.language ?? 'es_AR',
         params,
         renderedText: template ? renderTemplate(template.bodyText, params) : null,
         status,
@@ -305,46 +303,83 @@ async function countByStatus(statuses) {
   return snap.data().count;
 }
 
+// Mezcla determinística por día: dentro del mismo nivel de prioridad, cada
+// día arranca por combinaciones distintas, así no se buscan siempre los
+// mismos rubros primero.
+function dayHash(str) {
+  let h = 2166136261;
+  const s = `${new Date().toISOString().slice(0, 10)}|${str}`;
+  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+
+/** Combinaciones rubro × zona elegidas, en el orden en que conviene buscarlas:
+    primero las nunca buscadas (zonas más grandes antes), después las que hace
+    más que no se buscan. Las agotadas recientemente quedan afuera. */
+async function orderedCombos(config) {
+  const rubros = config.rubroIds.map(getRubro).filter(Boolean);
+  const zones = config.zoneIds.map(getZone).filter(Boolean);
+  if (!rubros.length || !zones.length) return [];
+  const runsSnap = await getDb().collection(RUNS).get();
+  const runs = new Map(runsSnap.docs.map(d => [d.id, d.data()]));
+  const now = Date.now();
+  const combos = [];
+  for (const rubro of rubros) {
+    for (const zone of zones) {
+      const id = `${rubro.id}__${zone.id}`;
+      const run = runs.get(id);
+      if (run?.exhaustedUntil && tsToMs(run.exhaustedUntil) > now) continue;
+      combos.push({ id, rubro, zone, lastRunMs: tsToMs(run?.lastRunAt), hash: dayHash(id) });
+    }
+  }
+  return combos.sort((a, b) => a.lastRunMs - b.lastRunMs || a.zone.tier - b.zone.tier || a.hash - b.hash);
+}
+
 /**
- * Búsqueda diaria: llena la cola hasta ~1,5 días de cupo, rotando entre las
- * búsquedas activas (la que hace más que no corre, primero). `force` la corre
- * aunque la prospección esté apagada o pausada (botón "Buscar ahora").
+ * Búsqueda diaria: llena la cola hasta ~1,5 días de cupo recorriendo las
+ * combinaciones rubro × zona elegidas. `force` la corre aunque la
+ * prospección esté apagada o pausada (botón "Buscar ahora").
  */
 export async function runDailySearch({ force = false } = {}) {
   const config = await getProspectConfig();
   if (!force && (!config.enabled || config.paused)) return { skipped: true, reason: 'apagada o pausada' };
 
-  const active = config.searches.filter(s => s.active);
-  if (active.length === 0) return { skipped: true, reason: 'no hay búsquedas activas' };
+  const combos = await orderedCombos(config);
+  if (combos.length === 0) return { skipped: true, reason: 'no hay rubros y zonas elegidos (o ya están todos agotados)' };
 
   const backlog = await countByStatus(QUEUE_STATUSES);
   let needed = Math.ceil(config.dailyCap * 1.5) - backlog;
   if (needed <= 0) return { skipped: true, reason: `ya hay ${backlog} en la cola` };
 
   const templates = await getAllTemplates();
-  const ordered = [...active].sort((a, b) => tsToMs(a.lastRunAt) - tsToMs(b.lastRunAt));
+  const db = getDb();
   const summary = [];
-  const runs = {};
-  for (const search of ordered) {
+  for (const combo of combos.slice(0, MAX_COMBOS_PER_RUN)) {
     if (needed <= 0) break;
+    const label = `${combo.rubro.label} en ${combo.zone.name} (${combo.zone.province})`;
     try {
-      const r = await runSearch(search, { maxNew: needed, autoApprove: config.autoApprove, templates });
+      const r = await runCombo(combo, { maxNew: needed, autoApprove: config.autoApprove, templates, templateNames: config.templates });
       needed -= r.added;
-      runs[search.id] = { lastRunAt: new Date(), lastNewCount: r.added };
-      summary.push({ search: `${search.rubro} en ${search.zona}`, ...r });
+      await db.collection(RUNS).doc(combo.id).set({
+        rubroId: combo.rubro.id,
+        zoneId: combo.zone.id,
+        lastRunAt: new Date(),
+        lastFound: r.found,
+        lastAdded: r.added,
+        runs: admin.firestore.FieldValue.increment(1),
+        totalAdded: admin.firestore.FieldValue.increment(r.added),
+        // Sin candidatos nuevos = Maps ya no tiene nada que no hayamos visto.
+        exhaustedUntil: r.candidates === 0 ? new Date(Date.now() + EXHAUSTED_DAYS * 86400000) : null,
+      }, { merge: true });
+      summary.push({ search: label, ...r });
     } catch (err) {
       const msg = err.response?.data?.error?.message ?? err.message;
-      console.error(`[prospect] Error en la búsqueda "${search.rubro} en ${search.zona}":`, msg);
-      summary.push({ search: `${search.rubro} en ${search.zona}`, error: msg });
-      if (err.status === 400) break; // falta la API key: no tiene sentido seguir
+      console.error(`[prospect] Error en la búsqueda "${label}":`, msg);
+      summary.push({ search: label, error: msg });
+      // Falta la key o Google la rechaza: no tiene sentido seguir probando.
+      if (err.status === 400 || [400, 401, 403].includes(err.response?.status)) break;
     }
   }
-  // Releer antes de escribir para no pisar cambios hechos desde el panel
-  // mientras corría la búsqueda (puede tardar varios segundos).
-  const fresh = await getProspectConfig();
-  await configRef().set({
-    searches: fresh.searches.map(s => runs[s.id] ? { ...s, ...runs[s.id] } : s),
-  }, { merge: true });
   return { skipped: false, summary };
 }
 
@@ -449,7 +484,7 @@ export async function updateProspectStatusByWaMsgId(waMsgId, status, msgError = 
 
 function prospectNote(p) {
   return [
-    `Prospecto de Google Maps: ${p.shortName || p.name} (${p.rubro}, ${p.zona}).`,
+    `Prospecto de Google Maps: ${p.shortName || p.name} (${p.rubro}, ${p.zona}, ${p.provincia}).`,
     p.address && `Dirección: ${p.address}.`,
     p.website && `Web: ${p.website}.`,
     `Le escribimos nosotros primero (en frío) ofreciendo: ${p.offer || 'nuestros servicios'}.`,
@@ -532,8 +567,26 @@ export async function setProspectsStatus(ids, status, agentEmail) {
 }
 
 export async function getProspectSummary() {
-  const [config, sentToday] = await Promise.all([getProspectConfig(), sentTodayCount()]);
+  const [config, sentToday, runsSnap] = await Promise.all([
+    getProspectConfig(), sentTodayCount(), getDb().collection(RUNS).get(),
+  ]);
   const quality = config.lastQuality?.quality ?? 'UNKNOWN';
   const cap = config.paused ? 0 : quality === 'YELLOW' ? Math.ceil(config.dailyCap / 2) : quality === 'RED' ? 0 : config.dailyCap;
-  return { sentToday, effectiveCap: cap, quality, tier: config.lastQuality?.tier ?? null };
+  // Avance sobre las combinaciones rubro × zona elegidas.
+  const selected = new Set(config.rubroIds.flatMap(r => config.zoneIds.map(z => `${r}__${z}`)));
+  const now = Date.now();
+  let searched = 0;
+  let exhausted = 0;
+  runsSnap.docs.forEach(d => {
+    if (!selected.has(d.id)) return;
+    searched++;
+    if (tsToMs(d.data().exhaustedUntil) > now) exhausted++;
+  });
+  return {
+    sentToday,
+    effectiveCap: cap,
+    quality,
+    tier: config.lastQuality?.tier ?? null,
+    combos: { total: selected.size, searched, exhausted },
+  };
 }

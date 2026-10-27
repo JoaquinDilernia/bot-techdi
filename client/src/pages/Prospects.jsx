@@ -26,7 +26,11 @@ const RESPONDED = ['respondio', 'interesado', 'no_interesa', 'reunion', 'cliente
 
 const QUALITY_LABEL = { GREEN: 'Alta', YELLOW: 'Media', RED: 'Baja', UNKNOWN: 'Sin datos' };
 
-const EMPTY_SEARCH = { rubro: '', zona: '', offer: '', templateName: '', language: 'es_AR', paramsTemplate: ['{{negocio}}'], active: true };
+const TIER_LABEL = { 1: 'Grande', 2: 'Mediana', 3: 'Chica' };
+
+function norm(s) {
+  return (s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
 
 function formatDate(ts) {
   if (!ts) return '—';
@@ -41,6 +45,7 @@ export default function Prospects() {
   const [prospects, setProspects] = useState([]);
   const [config, setConfig] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [catalog, setCatalog] = useState(null);
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
@@ -60,6 +65,7 @@ export default function Prospects() {
         setProspects(data.prospects ?? []);
         setConfig(data.config);
         setSummary(data.summary);
+        setCatalog(data.catalog);
       }
       if (tRes.ok) setTemplates(await tRes.json());
     } finally {
@@ -149,7 +155,7 @@ export default function Prospects() {
     });
   }
 
-  if (loading || !config) {
+  if (loading || !config || !catalog) {
     return <div className={styles.page}><p className={styles.empty}>Cargando…</p></div>;
   }
 
@@ -201,6 +207,12 @@ export default function Prospects() {
           <Stat label="Respondieron" value={`${respondedTotal}${sentTotal ? ` (${Math.round((respondedTotal / sentTotal) * 100)}%)` : ''}`} tone="success" />
           <Stat label="Les interesa" value={(counts.interesado ?? 0) + (counts.reunion ?? 0) + (counts.cliente ?? 0)} tone="success" />
         </div>
+        {summary?.combos?.total > 0 && (
+          <p className={styles.hint}>
+            Búsquedas: {summary.combos.searched} de {summary.combos.total} combinaciones rubro × zona ya recorridas
+            {summary.combos.exhausted > 0 && ` · ${summary.combos.exhausted} agotadas (se vuelven a probar en 3 meses)`}.
+          </p>
+        )}
         {summary?.quality === 'YELLOW' && (
           <p className={styles.hint}>La calidad del número está en amarillo: el cupo diario bajó a la mitad hasta que vuelva a verde.</p>
         )}
@@ -225,14 +237,14 @@ export default function Prospects() {
             setStatus={setStatus}
             searchNow={searchNow}
             busy={busy}
-            hasSearches={config.searches.length > 0}
+            hasSearches={config.rubroIds.length > 0 && config.zoneIds.length > 0}
           />
         )}
         {tab === 'pipeline' && (
-          <PipelineTab prospects={prospects} filter={filter} setFilter={setFilter} counts={counts} setStatus={setStatus} busy={busy} searches={config.searches} />
+          <PipelineTab prospects={prospects} filter={filter} setFilter={setFilter} counts={counts} setStatus={setStatus} busy={busy} />
         )}
         {tab === 'config' && (
-          <ConfigTab config={config} templates={templates} saveConfig={saveConfig} busy={busy} />
+          <ConfigTab config={config} catalog={catalog} templates={templates} saveConfig={saveConfig} busy={busy} />
         )}
       </div>
     </div>
@@ -255,7 +267,7 @@ function ApproveTab({ pending, selected, toggleSelected, setSelected, setStatus,
           Seleccionar todos
         </label>
         <div className={styles.toolbarActions}>
-          <button className={styles.btnSecondary} onClick={searchNow} disabled={busy || !hasSearches} title={hasSearches ? '' : 'Primero cargá una búsqueda en Configuración'}>
+          <button className={styles.btnSecondary} onClick={searchNow} disabled={busy || !hasSearches} title={hasSearches ? '' : 'Primero elegí rubros y zonas en Configuración'}>
             {busy ? 'Trabajando…' : 'Buscar ahora'}
           </button>
           <button className={styles.btnSecondary} onClick={() => setStatus(ids, 'descartado')} disabled={busy || ids.length === 0}>
@@ -269,7 +281,7 @@ function ApproveTab({ pending, selected, toggleSelected, setSelected, setStatus,
 
       {pending.length === 0 ? (
         <p className={styles.empty}>
-          No hay negocios para aprobar. {hasSearches ? 'La búsqueda corre sola a las 8, o tocá "Buscar ahora".' : 'Cargá una búsqueda en Configuración para empezar.'}
+          No hay negocios para aprobar. {hasSearches ? 'La búsqueda corre sola a las 8, o tocá "Buscar ahora".' : 'Elegí rubros y zonas en Configuración para empezar.'}
         </p>
       ) : (
         <div className={styles.cards}>
@@ -279,7 +291,7 @@ function ApproveTab({ pending, selected, toggleSelected, setSelected, setStatus,
                 <input type="checkbox" checked={selected.has(p.id)} onChange={() => toggleSelected(p.id)} />
                 <div className={styles.cardTitle}>
                   <strong>{p.shortName || p.name}</strong>
-                  <span className={styles.muted}>{p.rubro} · {p.zona}</span>
+                  <span className={styles.muted}>{p.rubro} · {p.zona}, {p.provincia}</span>
                 </div>
                 <span className={styles.score} title="Puntaje de la IA (1 a 5)">{p.score}/5</span>
               </div>
@@ -302,38 +314,50 @@ function ApproveTab({ pending, selected, toggleSelected, setSelected, setStatus,
   );
 }
 
-function PipelineTab({ prospects, filter, setFilter, counts, setStatus, busy, searches }) {
-  const visible = prospects.filter(p => p.status !== 'pendiente' && (filter === 'todos' || p.status === filter));
+// Resultados agrupados por un campo del prospecto (rubro, provincia): lo que
+// sirve para decidir qué rubros y zonas conviene seguir buscando.
+function resultsBy(prospects, key) {
+  const rows = new Map();
+  for (const p of prospects) {
+    if (!p.sentAt && !RESPONDED.includes(p.status)) continue;
+    const k = p[key] ?? '—';
+    const r = rows.get(k) ?? { key: k, sent: 0, responded: 0, interested: 0, no: 0 };
+    r.sent++;
+    if (RESPONDED.includes(p.status)) r.responded++;
+    if (['interesado', 'reunion', 'cliente'].includes(p.status)) r.interested++;
+    if (p.status === 'no_interesa') r.no++;
+    rows.set(k, r);
+  }
+  return [...rows.values()].sort((a, b) => b.sent - a.sent);
+}
 
-  // Resultado por búsqueda: lo que sirve para decidir qué rubro/zona/plantilla
-  // conviene seguir usando.
-  const bySearch = searches.map(s => {
-    const mine = prospects.filter(p => p.searchId === s.id);
-    const sent = mine.filter(p => p.sentAt || RESPONDED.includes(p.status)).length;
-    const responded = mine.filter(p => RESPONDED.includes(p.status)).length;
-    const interested = mine.filter(p => ['interesado', 'reunion', 'cliente'].includes(p.status)).length;
-    const no = mine.filter(p => p.status === 'no_interesa').length;
-    return { ...s, sent, responded, interested, no };
-  }).filter(s => s.sent > 0);
+function ResultsTable({ title, rows }) {
+  if (rows.length === 0) return null;
+  return (
+    <div className={styles.table}>
+      <div className={`${styles.tableHead} ${styles.cols5}`}>
+        <span>{title}</span><span>Enviados</span><span>Respondieron</span><span>Les interesa</span><span>No, gracias</span>
+      </div>
+      {rows.map(r => (
+        <div key={r.key} className={`${styles.tableRow} ${styles.cols5}`}>
+          <span><strong>{r.key}</strong></span>
+          <span>{r.sent}</span>
+          <span>{r.responded} <span className={styles.muted}>({Math.round((r.responded / r.sent) * 100)}%)</span></span>
+          <span>{r.interested}</span>
+          <span>{r.no}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function PipelineTab({ prospects, filter, setFilter, counts, setStatus, busy }) {
+  const visible = prospects.filter(p => p.status !== 'pendiente' && (filter === 'todos' || p.status === filter));
 
   return (
     <>
-      {bySearch.length > 0 && (
-        <div className={styles.table}>
-          <div className={`${styles.tableHead} ${styles.cols5}`}>
-            <span>Búsqueda</span><span>Enviados</span><span>Respondieron</span><span>Les interesa</span><span>No, gracias</span>
-          </div>
-          {bySearch.map(s => (
-            <div key={s.id} className={`${styles.tableRow} ${styles.cols5}`}>
-              <span><strong>{s.rubro}</strong> <span className={styles.muted}>· {s.zona} · {s.templateName}</span></span>
-              <span>{s.sent}</span>
-              <span>{s.responded} <span className={styles.muted}>({Math.round((s.responded / s.sent) * 100)}%)</span></span>
-              <span>{s.interested}</span>
-              <span>{s.no}</span>
-            </div>
-          ))}
-        </div>
-      )}
+      <ResultsTable title="Rubro" rows={resultsBy(prospects, 'rubro')} />
+      <ResultsTable title="Provincia" rows={resultsBy(prospects, 'provincia')} />
 
       <div className={styles.chips}>
         {PIPELINE_FILTERS.map(f => (
@@ -354,7 +378,7 @@ function PipelineTab({ prospects, filter, setFilter, counts, setStatus, busy, se
             <div key={p.id} className={`${styles.tableRow} ${styles.cols6}`}>
               <span>
                 <a className={styles.nameLink} href={`#/conversations?open=${encodeURIComponent(p.contactId)}`}>{p.shortName || p.name}</a>
-                <span className={styles.muted}> · {p.rubro}, {p.zona}</span>
+                <span className={styles.muted}> · {p.rubro}, {p.zona} ({p.provincia})</span>
               </span>
               <span><span className={`${styles.badge} ${styles[`tone_${STATUS_TONE[p.status]}`]}`}>{STATUS_LABEL[p.status] ?? p.status}</span></span>
               <span className={styles.muted} title={p.error ?? ''}>
@@ -382,108 +406,176 @@ function PipelineTab({ prospects, filter, setFilter, counts, setStatus, busy, se
   );
 }
 
-function ConfigTab({ config, templates, saveConfig, busy }) {
+function ConfigTab({ config, catalog, templates, saveConfig, busy }) {
   const [dailyCap, setDailyCap] = useState(config.dailyCap);
   const [autoApprove, setAutoApprove] = useState(config.autoApprove);
-  const [searches, setSearches] = useState(config.searches);
+  const [templateNames, setTemplateNames] = useState(config.templates);
+  const [rubroIds, setRubroIds] = useState(new Set(config.rubroIds));
+  const [zoneIds, setZoneIds] = useState(new Set(config.zoneIds));
+  const [openProvinces, setOpenProvinces] = useState(new Set());
+  const [zoneQuery, setZoneQuery] = useState('');
   const [saved, setSaved] = useState(false);
 
-  function patchSearch(i, patch) {
-    setSaved(false);
-    setSearches(prev => prev.map((s, j) => j === i ? { ...s, ...patch } : s));
+  const allZoneIds = useMemo(() => catalog.provinces.flatMap(p => p.zones.map(z => z.id)), [catalog]);
+  const dirty = () => setSaved(false);
+
+  function toggleIn(setter, ids, on) {
+    dirty();
+    setter(prev => {
+      const n = new Set(prev);
+      ids.forEach(id => (on ? n.add(id) : n.delete(id)));
+      return n;
+    });
   }
 
-  function pickTemplate(i, name) {
-    const tpl = templates.find(t => t.name === name);
-    const n = tpl?.params?.length ?? 0;
-    // Por defecto la primera variable es el nombre del negocio.
-    const paramsTemplate = Array.from({ length: n }, (_, k) => searches[i].paramsTemplate?.[k] ?? (k === 0 ? '{{negocio}}' : ''));
-    patchSearch(i, { templateName: name, language: tpl?.language ?? 'es_AR', paramsTemplate });
+  function toggleOpen(id) {
+    setOpenProvinces(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
   }
 
   async function handleSave() {
-    const ok = await saveConfig({ dailyCap, autoApprove, searches });
+    const ok = await saveConfig({
+      dailyCap,
+      autoApprove,
+      templates: templateNames,
+      rubroIds: [...rubroIds],
+      zoneIds: [...zoneIds],
+    });
     setSaved(ok);
   }
+
+  const q = norm(zoneQuery.trim());
+  const provinces = catalog.provinces
+    .map(p => ({ ...p, visibleZones: q && !norm(p.name).includes(q) ? p.zones.filter(z => norm(z.name).includes(q)) : p.zones }))
+    .filter(p => p.visibleZones.length > 0);
 
   return (
     <div className={styles.form}>
       <div className={styles.fieldRow}>
         <div className={styles.field}>
           <label className={styles.label}>Envíos por día (máximo)</label>
-          <input className={styles.input} type="number" min={1} max={100} value={dailyCap} onChange={e => { setDailyCap(e.target.value); setSaved(false); }} />
+          <input className={styles.input} type="number" min={1} max={100} value={dailyCap} onChange={e => { setDailyCap(e.target.value); dirty(); }} />
           <p className={styles.hint}>Es un tope, no un objetivo: si un día hay menos aprobados, se mandan menos. Si la calidad del número baja a amarillo se reduce a la mitad, y en rojo se pausa todo.</p>
         </div>
         <label className={styles.checkLabel}>
-          <input type="checkbox" checked={autoApprove} onChange={e => { setAutoApprove(e.target.checked); setSaved(false); }} />
+          <input type="checkbox" checked={autoApprove} onChange={e => { setAutoApprove(e.target.checked); dirty(); }} />
           Aprobar automáticamente lo que la IA califica como bueno
         </label>
       </div>
 
-      <h2 className={styles.formTitle}>Búsquedas</h2>
-      <p className={styles.hint}>
-        Cada búsqueda es un rubro + una zona de Google Maps. Se van rotando día a día. En los parámetros
-        podés usar <code>{'{{negocio}}'}</code>, <code>{'{{rubro}}'}</code> y <code>{'{{zona}}'}</code>.
-      </p>
-
-      {searches.map((s, i) => {
-        const tpl = templates.find(t => t.name === s.templateName);
+      <h2 className={styles.formTitle}>Rubros</h2>
+      <p className={styles.hint}>Cada grupo de rubros usa su propia plantilla. Elegí los rubros a los que les queremos escribir.</p>
+      {Object.entries(catalog.groups).map(([groupId, group]) => {
+        const rubros = catalog.rubros.filter(r => r.group === groupId);
+        const selectedCount = rubros.filter(r => rubroIds.has(r.id)).length;
+        const tpl = templates.find(t => t.name === templateNames[groupId]);
         return (
-          <div key={s.id ?? i} className={styles.searchCard}>
-            <div className={styles.fieldRow}>
-              <div className={styles.field}>
-                <label className={styles.label}>Rubro</label>
-                <input className={styles.input} value={s.rubro} onChange={e => patchSearch(i, { rubro: e.target.value })} placeholder="Ej: restaurantes" />
-              </div>
-              <div className={styles.field}>
-                <label className={styles.label}>Zona</label>
-                <input className={styles.input} value={s.zona} onChange={e => patchSearch(i, { zona: e.target.value })} placeholder="Ej: San Isidro, Buenos Aires" />
-              </div>
+          <div key={groupId} className={styles.searchCard}>
+            <div className={styles.groupHead}>
+              <label className={styles.checkLabel}>
+                <input
+                  type="checkbox"
+                  checked={selectedCount === rubros.length}
+                  ref={el => { if (el) el.indeterminate = selectedCount > 0 && selectedCount < rubros.length; }}
+                  onChange={e => toggleIn(setRubroIds, rubros.map(r => r.id), e.target.checked)}
+                />
+                <strong>{group.label}</strong>
+              </label>
+              <span className={styles.muted}>{selectedCount}/{rubros.length}</span>
             </div>
-            <div className={styles.field}>
-              <label className={styles.label}>Qué le ofrecemos (para que la IA califique)</label>
-              <input className={styles.input} value={s.offer} onChange={e => patchSearch(i, { offer: e.target.value })} placeholder="Ej: bot de WhatsApp que toma reservas y pedidos + sistema de reservas" />
+            <div className={styles.chips}>
+              {rubros.map(r => (
+                <button
+                  type="button"
+                  key={r.id}
+                  className={`${styles.chip} ${rubroIds.has(r.id) ? styles.chipActive : ''}`}
+                  onClick={() => toggleIn(setRubroIds, [r.id], !rubroIds.has(r.id))}
+                >
+                  {r.label}
+                </button>
+              ))}
             </div>
             <div className={styles.field}>
               <label className={styles.label}>Plantilla</label>
-              <select className={styles.input} value={s.templateName} onChange={e => pickTemplate(i, e.target.value)}>
-                <option value="">Elegí una plantilla…</option>
+              <select
+                className={styles.input}
+                value={templateNames[groupId] ?? ''}
+                onChange={e => { dirty(); setTemplateNames(prev => ({ ...prev, [groupId]: e.target.value })); }}
+              >
+                {!tpl && <option value={templateNames[groupId]}>{templateNames[groupId]} (no está en Plantillas)</option>}
                 {templates.map(t => (
                   <option key={t.id} value={t.name}>{t.displayName} ({t.metaStatus ?? 'sin sincronizar'})</option>
                 ))}
               </select>
               {tpl && <p className={styles.messagePreview}>{tpl.bodyText}{tpl.buttons?.length ? `\n\n[${tpl.buttons.join('] [')}]` : ''}</p>}
-              {tpl && tpl.metaStatus !== 'APPROVED' && <p className={styles.hint}>⚠ Esta plantilla todavía no está aprobada por Meta: se puede buscar y aprobar, pero no se manda hasta que la aprueben.</p>}
-            </div>
-            {tpl?.params?.map((desc, k) => (
-              <div key={k} className={styles.field}>
-                <label className={styles.label}>{`{{${k + 1}}}`} {desc}</label>
-                <input
-                  className={styles.input}
-                  value={s.paramsTemplate?.[k] ?? ''}
-                  onChange={e => patchSearch(i, { paramsTemplate: Object.assign([...(s.paramsTemplate ?? [])], { [k]: e.target.value }) })}
-                />
-              </div>
-            ))}
-            <div className={styles.searchFooter}>
-              <label className={styles.checkLabel}>
-                <input type="checkbox" checked={s.active !== false} onChange={e => patchSearch(i, { active: e.target.checked })} />
-                Activa
-              </label>
-              {s.lastRunAt && <span className={styles.muted}>Última vez: {formatDate(s.lastRunAt)} · {s.lastNewCount ?? 0} nuevos</span>}
-              <button type="button" className={styles.linkDanger} onClick={() => { setSaved(false); setSearches(prev => prev.filter((_, j) => j !== i)); }}>
-                Quitar
-              </button>
+              {tpl && tpl.metaStatus !== 'APPROVED' && (
+                <p className={styles.hint}>⚠ Todavía no está aprobada por Meta: se puede buscar y aprobar negocios, pero no se manda hasta que la aprueben.</p>
+              )}
             </div>
           </div>
         );
       })}
 
-      <button type="button" className={styles.btnSecondary} onClick={() => { setSaved(false); setSearches(prev => [...prev, { ...EMPTY_SEARCH }]); }}>
-        + Agregar búsqueda
-      </button>
+      <h2 className={styles.formTitle}>Zonas</h2>
+      <p className={styles.hint}>
+        Las ciudades grandes están divididas en barrios o localidades (Google Maps trae hasta 60 resultados por búsqueda).
+        Se buscan primero las zonas más grandes y se van rotando día a día.
+      </p>
+      <div className={styles.toolbar}>
+        <input className={styles.input} type="search" placeholder="Buscar provincia, ciudad o barrio…" value={zoneQuery} onChange={e => setZoneQuery(e.target.value)} />
+        <div className={styles.toolbarActions}>
+          <button type="button" className={styles.btnSecondary} onClick={() => toggleIn(setZoneIds, allZoneIds, true)}>Toda Argentina</button>
+          <button type="button" className={styles.btnSecondary} onClick={() => toggleIn(setZoneIds, allZoneIds, false)}>Limpiar</button>
+        </div>
+      </div>
+      <div className={styles.provinceList}>
+        {provinces.map(p => {
+          const ids = p.zones.map(z => z.id);
+          const selectedCount = ids.filter(id => zoneIds.has(id)).length;
+          const open = openProvinces.has(p.id) || !!q;
+          return (
+            <div key={p.id} className={styles.provinceRow}>
+              <div className={styles.groupHead}>
+                <label className={styles.checkLabel}>
+                  <input
+                    type="checkbox"
+                    checked={selectedCount === ids.length}
+                    ref={el => { if (el) el.indeterminate = selectedCount > 0 && selectedCount < ids.length; }}
+                    onChange={e => toggleIn(setZoneIds, ids, e.target.checked)}
+                  />
+                  {p.name}
+                </label>
+                <button type="button" className={styles.expandBtn} onClick={() => toggleOpen(p.id)}>
+                  {selectedCount}/{ids.length} {open ? '▴' : '▾'}
+                </button>
+              </div>
+              {open && (
+                <div className={styles.chips}>
+                  {p.visibleZones.map(z => (
+                    <button
+                      type="button"
+                      key={z.id}
+                      title={TIER_LABEL[z.tier]}
+                      className={`${styles.chip} ${zoneIds.has(z.id) ? styles.chipActive : ''}`}
+                      onClick={() => toggleIn(setZoneIds, [z.id], !zoneIds.has(z.id))}
+                    >
+                      {z.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       <div className={styles.formActions}>
+        <span className={styles.muted}>
+          {rubroIds.size} rubros × {zoneIds.size} zonas = {(rubroIds.size * zoneIds.size).toLocaleString('es-AR')} búsquedas posibles
+        </span>
         {saved && <span className={styles.muted}>Guardado ✓</span>}
         <button className={styles.btnPrimary} onClick={handleSave} disabled={busy}>{busy ? 'Guardando…' : 'Guardar configuración'}</button>
       </div>

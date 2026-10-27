@@ -240,7 +240,8 @@ export async function downloadMetaMedia(mediaId) {
 }
 
 // `buttons`: textos de botones de respuesta rápida (máx. 3, 25 caracteres c/u).
-export async function createMetaTemplate({ name, language, category, bodyText, params = [], buttons = [] }) {
+// `examples`: valores de muestra para cada {{n}} que ve el revisor de Meta.
+export async function createMetaTemplate({ name, language, category, bodyText, params = [], buttons = [], examples = [] }) {
   const wabaId = process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID;
   const token  = process.env.META_ACCESS_TOKEN;
   if (!wabaId || !token) {
@@ -249,7 +250,7 @@ export async function createMetaTemplate({ name, language, category, bodyText, p
   const bodyComponent = { type: 'BODY', text: bodyText };
   if (params.length > 0) {
     // Meta requires example values for every variable in the template
-    bodyComponent.example = { body_text: [params.map((_, i) => `ejemplo${i + 1}`)] };
+    bodyComponent.example = { body_text: [params.map((_, i) => examples[i] || `ejemplo${i + 1}`)] };
   }
   const components = [bodyComponent];
   if (buttons.length > 0) {

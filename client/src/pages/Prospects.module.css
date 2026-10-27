@@ -268,3 +268,27 @@
   .cards { grid-template-columns: 1fr; }
   .pauseBanner { flex-direction: column; align-items: flex-start; }
 }
+
+/* ---- Rubros y zonas ---- */
+.groupHead { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.provinceList {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  max-height: 480px;
+  overflow-y: auto;
+}
+.provinceRow { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--color-border); }
+.provinceRow:last-child { border-bottom: none; }
+.expandBtn {
+  border: none;
+  background: none;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  padding: 4px 6px;
+}
+.expandBtn:hover { color: var(--color-text); }
+.toolbar .input { flex: 1; min-width: 220px; }
