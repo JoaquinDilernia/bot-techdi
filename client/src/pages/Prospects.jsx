@@ -462,7 +462,7 @@ function ConfigTab({ config, catalog, templates, saveConfig, busy }) {
         </div>
         <label className={styles.checkLabel}>
           <input type="checkbox" checked={autoApprove} onChange={e => { setAutoApprove(e.target.checked); dirty(); }} />
-          Aprobar automáticamente lo que la IA califica como bueno
+          Aprobar automáticamente lo que la IA califica con 3/5 o más
         </label>
       </div>
 

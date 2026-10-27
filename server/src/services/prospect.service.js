@@ -44,6 +44,7 @@ const SEND_GAP_MS = 45 * 1000;         // separación entre envíos dentro de un
 const QUALITY_CACHE_MS = 30 * 60 * 1000;
 const MAX_COMBOS_PER_RUN = 8;          // tope de búsquedas en Maps por corrida (costo y tiempo)
 const EXHAUSTED_DAYS = 90;             // una combinación agotada se vuelve a probar a los 3 meses
+const AUTO_APPROVE_MIN_SCORE = 3;      // debajo de esto, aunque la IA diga que sirve, queda para aprobar a mano
 
 // Estados que todavía no recibieron mensaje — cuentan como "cola".
 const QUEUE_STATUSES = ['pendiente', 'aprobado'];
@@ -263,7 +264,10 @@ async function runCombo({ id: comboId, rubro, zone }, { maxNew, autoApprove, tem
       // Las plantillas de prospección tienen una sola variable: el nombre del
       // negocio. Meta rechaza parámetros con saltos de línea o tabs.
       const params = [q.shortName.replace(/[\n\t]+/g, ' ')];
-      const status = !q.fit ? 'descartado' : (autoApprove && template?.metaStatus === 'APPROVED') ? 'aprobado' : 'pendiente';
+      // La aprobación automática solo toma los de puntaje alto: Claude a veces
+      // marca "sirve" negocios chicos con 2/5, y esos mejor que los mire alguien.
+      const autoOk = autoApprove && template?.metaStatus === 'APPROVED' && q.score >= AUTO_APPROVE_MIN_SCORE;
+      const status = !q.fit ? 'descartado' : autoOk ? 'aprobado' : 'pendiente';
       if (q.fit) added++;
       writes.set(db.collection(PROSPECTS).doc(p.contactId), {
         ...p,
@@ -340,7 +344,22 @@ async function orderedCombos(config) {
  * combinaciones rubro × zona elegidas. `force` la corre aunque la
  * prospección esté apagada o pausada (botón "Buscar ahora").
  */
-export async function runDailySearch({ force = false } = {}) {
+// Una sola búsqueda a la vez: dos corridas en paralelo (dos clics en "Buscar
+// ahora", o el botón mientras corre el cron) leen la misma cola, califican los
+// mismos negocios dos veces y la segunda pisa lo que guardó la primera.
+let searchRunning = null;
+
+export async function runDailySearch(opts = {}) {
+  if (searchRunning) return { skipped: true, reason: 'ya hay una búsqueda en curso, esperá a que termine' };
+  searchRunning = runDailySearchInternal(opts);
+  try {
+    return await searchRunning;
+  } finally {
+    searchRunning = null;
+  }
+}
+
+async function runDailySearchInternal({ force = false } = {}) {
   const config = await getProspectConfig();
   if (!force && (!config.enabled || config.paused)) return { skipped: true, reason: 'apagada o pausada' };
 
