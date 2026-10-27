@@ -24,6 +24,8 @@ import projectRoutes from './routes/project.routes.js';
 import ticketRoutes from './routes/ticket.routes.js';
 import campaignRoutes from './routes/campaign.routes.js';
 import redirectRoutes from './routes/redirect.routes.js';
+import prospectRoutes from './routes/prospect.routes.js';
+import { runDailySearch, sendTick } from './services/prospect.service.js';
 import { seedAgentsIfNeeded } from './services/auth.service.js';
 import { seedAreasIfNeeded } from './services/area.service.js';
 import { requireAuth, requireAtLeastAtencionCliente } from './middleware/requireAuth.js';
@@ -43,6 +45,18 @@ computeResolvedByBotTotals().catch(err => console.error('[public-stats] Error in
 cron.schedule('0 9 * * *', () => {
   computeResolvedByBotTotals().catch(err => console.error('[cron] public-stats error:', err.message));
 });
+
+// Prospección: la búsqueda llena la cola a la mañana (lun-vie) y los envíos
+// salen de a poco cada 15 min; cada función chequea por su cuenta si la
+// prospección está activa, no pausada y en horario, así que si está apagada
+// los crons no hacen nada.
+const AR_TZ = 'America/Argentina/Buenos_Aires';
+cron.schedule('0 8 * * 1-5', () => {
+  runDailySearch().catch(err => console.error('[cron] prospect search error:', err.message));
+}, { timezone: AR_TZ });
+cron.schedule('*/15 * * * *', () => {
+  sendTick().catch(err => console.error('[cron] prospect send error:', err.message));
+}, { timezone: AR_TZ });
 
 // Middleware
 const allowedOrigins = [
@@ -112,6 +126,7 @@ app.use('/api/projects',      requireAuth, projectRoutes);
 // crear y comentar tickets (ver Global Constraints del plan).
 app.use('/api/tickets',       requireAuth, ticketRoutes);
 app.use('/api/campaigns',     requireAuth, requireAtLeastAtencionCliente, campaignRoutes);
+app.use('/api/prospects',     requireAuth, requireAtLeastAtencionCliente, prospectRoutes);
 
 // Health check
 app.get('/health', (req, res) => {

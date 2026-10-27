@@ -21,6 +21,7 @@ import Proyectos     from './pages/Proyectos.jsx';
 import Tickets       from './pages/Tickets.jsx';
 import Customers     from './pages/Customers.jsx';
 import Campaigns     from './pages/Campaigns.jsx';
+import Prospects     from './pages/Prospects.jsx';
 
 export default function App() {
   return (
@@ -49,6 +50,7 @@ function AppRoutes() {
           <Route path="conversations" element={<Conversations />} />
           <Route path="customers"     element={<Customers />} />
           <Route path="campaigns"     element={<Campaigns />} />
+          <Route path="prospects"     element={<Prospects />} />
           <Route path="simulator"     element={<Simulator />} />
           <Route path="knowledge"     element={<KnowledgeBase />} />
           <Route path="config"        element={<Config />} />

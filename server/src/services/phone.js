@@ -56,3 +56,13 @@ export function toWaContactId(raw) {
 
   return `549${d}`;
 }
+
+// ¿El número que devuelve Google Places es un celular argentino? Places lo
+// formatea con libphonenumber, que pone el 9 de celular en el formato
+// internacional ("+54 9 11 2345-6789") y no en los fijos ("+54 11 4345-6789").
+// Hay que mirarlo ANTES de canonicalizar: toWaContactId le agrega el 9 a
+// cualquier número argentino, y un fijo no tiene WhatsApp (la plantilla falla).
+export function isArgentineMobile(internationalPhone) {
+  if (!internationalPhone) return false;
+  return /^\+?54\s*9/.test(String(internationalPhone).trim());
+}

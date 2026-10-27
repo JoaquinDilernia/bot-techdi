@@ -21,6 +21,7 @@ export default function Templates() {
   const [language, setLanguage] = useState('es_AR');
   const [category, setCategory] = useState('UTILITY');
   const [paramsText, setParamsText] = useState('');
+  const [buttonsText, setButtonsText] = useState('');
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState('');
@@ -56,7 +57,7 @@ export default function Templates() {
 
   function openModal() {
     setName(''); setDisplayName(''); setBodyText('');
-    setLanguage('es_AR'); setCategory('UTILITY'); setParamsText('');
+    setLanguage('es_AR'); setCategory('UTILITY'); setParamsText(''); setButtonsText('');
     setError('');
     setShowModal(true);
   }
@@ -67,9 +68,10 @@ export default function Templates() {
     setSaving(true); setError('');
     try {
       const params = paramsText.split('\n').map(s => s.trim()).filter(Boolean);
+      const buttons = buttonsText.split('\n').map(s => s.trim()).filter(Boolean);
       const r = await authFetch(BASE_URL + '/api/templates', {
         method: 'POST',
-        body: { name: name.trim(), displayName: displayName.trim() || name.trim(), bodyText: bodyText.trim(), language, category, params },
+        body: { name: name.trim(), displayName: displayName.trim() || name.trim(), bodyText: bodyText.trim(), language, category, params, buttons },
       });
       const body = await r.json();
       if (!r.ok) throw new Error(body.error);
@@ -188,6 +190,9 @@ export default function Templates() {
                     </td>
                     <td className={styles.tdPreview}>
                       <span className={styles.preview}>{t.bodyText}</span>
+                      {t.buttons?.length > 0 && (
+                        <span className={styles.meta}> · Botones: {t.buttons.join(' / ')}</span>
+                      )}
                     </td>
                     <td className={styles.tdAction}>
                       <button className={styles.deleteBtn} onClick={() => handleDelete(t.id)} title="Eliminar">×</button>
@@ -267,6 +272,17 @@ export default function Templates() {
                   rows={3}
                 />
                 <p className={styles.hint}>Descripción de cada {"{{n}}"} en orden. Dejá vacío si no hay parámetros.</p>
+              </div>
+              <div className={styles.fieldGroup}>
+                <label className={styles.label}>Botones de respuesta rápida (uno por línea, opcional)</label>
+                <textarea
+                  className={styles.textarea}
+                  placeholder={'Me interesa\nNo, gracias'}
+                  value={buttonsText}
+                  onChange={e => setButtonsText(e.target.value)}
+                  rows={2}
+                />
+                <p className={styles.hint}>Hasta 3 botones de 25 caracteres. Para prospección usá "Me interesa" y "No, gracias": el "No, gracias" saca al negocio de la lista automáticamente.</p>
               </div>
               {error && <p className={styles.error}>{error}</p>}
               <div className={styles.modalFooter}>

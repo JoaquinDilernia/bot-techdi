@@ -226,3 +226,62 @@ function buildMessages(conversationHistory, newMessage, imageData = null) {
   }
   return messages;
 }
+
+/**
+ * Califica una tanda de negocios encontrados en Google Maps para la
+ * prospección. Devuelve, en el mismo orden, `{ fit, score, reason, shortName }`:
+ * `shortName` es el nombre limpio para saludar ("Pizzería Don Juan" en vez de
+ * "Pizzería Don Juan | Delivery Palermo - Abierto 24hs"), que va como variable
+ * de la plantilla. Si Claude devuelve algo que no se puede leer, se marca todo
+ * como no calificado en vez de mandar mensajes a ciegas.
+ */
+export async function qualifyProspects(businesses, { rubro, zona, offer }) {
+  if (!businesses?.length) return [];
+  const list = businesses.map((b, i) => ({
+    i,
+    nombre: b.name,
+    tipo: b.primaryType ?? null,
+    direccion: b.address ?? null,
+    web: b.website ?? null,
+    rating: b.rating ?? null,
+    reseñas: b.reviews ?? 0,
+  }));
+
+  const response = await callAnthropicAPI({
+    model: MODEL,
+    max_tokens: 4000,
+    system: `Sos parte del equipo comercial de TechDI, una consultora de tecnología argentina (agentes de IA para WhatsApp e Instagram, agente de pauta para Meta Ads, sistemas a medida, webs y tiendas).
+Calificás negocios encontrados en Google Maps para decidir si vale la pena escribirles ofreciendo: ${offer || 'nuestros servicios'}.
+Criterios: que sea un negocio real y en funcionamiento del rubro buscado (no una cadena enorme ni una sucursal de una franquicia gigante, no un organismo público, no un particular), y que por su tamaño (reseñas, web) tenga volumen de consultas como para que le sirva.
+Respondés SOLO con un array JSON, sin texto alrededor.`,
+    messages: [{
+      role: 'user',
+      content: `Rubro buscado: ${rubro}. Zona: ${zona}.
+
+Negocios:
+${JSON.stringify(list, null, 1)}
+
+Para cada uno devolvé {"i": <índice>, "fit": true|false, "score": 1-5, "reason": "<motivo en una frase corta>", "shortName": "<nombre comercial limpio, sin sucursal, slogans ni horarios, máx 40 caracteres>"}.`,
+    }],
+  });
+  logUsage(response.usage, 'prospect_qualify');
+
+  let parsed = [];
+  try {
+    const text = extractText(response);
+    const json = text.slice(text.indexOf('['), text.lastIndexOf(']') + 1);
+    parsed = JSON.parse(json);
+  } catch (err) {
+    console.error('[claude] qualifyProspects devolvió JSON inválido:', err.message);
+  }
+  return businesses.map((b, i) => {
+    const r = parsed.find(p => p?.i === i);
+    if (!r) return { fit: false, score: 0, reason: 'No se pudo calificar', shortName: b.name };
+    return {
+      fit: !!r.fit,
+      score: Number(r.score) || 0,
+      reason: String(r.reason ?? '').slice(0, 200),
+      shortName: String(r.shortName || b.name).slice(0, 40).trim(),
+    };
+  });
+}

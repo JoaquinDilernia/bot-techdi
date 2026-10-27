@@ -9,6 +9,12 @@ import { processIncomingMessage } from '../services/bot.service.js';
 import { updateMessageStatusByWaMsgId } from '../services/conversation.service.js';
 import { updateCampaignSendStatusByWaMsgId } from '../services/campaign.service.js';
 import { toWaContactId } from '../services/phone.js';
+import {
+  updateProspectStatusByWaMsgId,
+  handleProspectReply,
+  handlePhoneQualityWebhook,
+  handleTemplateStatusWebhook,
+} from '../services/prospect.service.js';
 
 const router = Router();
 
@@ -41,6 +47,19 @@ router.post('/', async (req, res) => {
     const object = body.object;
 
     if (object === 'whatsapp_business_account') {
+      // Avisos de Meta sobre la cuenta (no son mensajes): calidad del número
+      // y estado de plantillas. Hay que suscribir estos campos en el webhook
+      // de la app de Meta; la prospección los usa para pausarse sola.
+      const change = body.entry?.[0]?.changes?.[0];
+      if (change?.field === 'phone_number_quality_update') {
+        await handlePhoneQualityWebhook(change.value);
+        return;
+      }
+      if (change?.field === 'message_template_status_update') {
+        await handleTemplateStatusWebhook(change.value);
+        return;
+      }
+
       // Handle delivery status updates
       const statusUpdate = parseWhatsAppStatusUpdate(body);
       if (statusUpdate) {
@@ -69,6 +88,9 @@ router.post('/', async (req, res) => {
           updateCampaignSendStatusByWaMsgId(waMsgId, mapped).catch(err =>
             console.error('[webhook] Error actualizando estado de difusión:', err.message)
           );
+          updateProspectStatusByWaMsgId(waMsgId, mapped, msgError).catch(err =>
+            console.error('[webhook] Error actualizando estado de prospecto:', err.message)
+          );
         }
         return;
       }
@@ -77,7 +99,14 @@ router.post('/', async (req, res) => {
       const msg = parseWhatsAppMessage(body);
       if (msg) {
         console.log(`[webhook] WPP entrante de ${msg.from}: ${msg.text?.substring(0, 50)}`);
-        await processIncomingMessage(msg);
+        // Si es la respuesta de un prospecto, se registra antes de que el bot
+        // cargue el contacto (así TeDI ya ve las notas del prospecto). Un
+        // "No, gracias" se contesta acá y el bot no sigue.
+        const handled = await handleProspectReply(msg).catch(err => {
+          console.error('[webhook] Error procesando respuesta de prospecto:', err.message);
+          return false;
+        });
+        if (!handled) await processIncomingMessage(msg);
       }
     } else if (object === 'instagram') {
       const msg = parseInstagramMessage(body);

@@ -239,7 +239,8 @@ export async function downloadMetaMedia(mediaId) {
   return { buffer: Buffer.from(response.data), mimeType: info.mime_type || 'application/octet-stream' };
 }
 
-export async function createMetaTemplate({ name, language, category, bodyText, params = [] }) {
+// `buttons`: textos de botones de respuesta rápida (máx. 3, 25 caracteres c/u).
+export async function createMetaTemplate({ name, language, category, bodyText, params = [], buttons = [] }) {
   const wabaId = process.env.META_WHATSAPP_BUSINESS_ACCOUNT_ID;
   const token  = process.env.META_ACCESS_TOKEN;
   if (!wabaId || !token) {
@@ -250,12 +251,31 @@ export async function createMetaTemplate({ name, language, category, bodyText, p
     // Meta requires example values for every variable in the template
     bodyComponent.example = { body_text: [params.map((_, i) => `ejemplo${i + 1}`)] };
   }
+  const components = [bodyComponent];
+  if (buttons.length > 0) {
+    components.push({ type: 'BUTTONS', buttons: buttons.map(text => ({ type: 'QUICK_REPLY', text })) });
+  }
   const { data } = await axios.post(
     `${META_API_URL}/${wabaId}/message_templates`,
-    { name, language, category, components: [bodyComponent] },
+    { name, language, category, components },
     { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
   );
   return data; // { id, status, ... }
+}
+
+// Calidad del número según Meta: GREEN / YELLOW / RED (o UNKNOWN si es nuevo).
+// La usa la prospección para bajar o pausar los envíos en frío antes de que
+// Meta limite el número, que es el mismo que atiende a los clientes.
+export async function fetchPhoneQuality() {
+  if (!process.env.META_ACCESS_TOKEN || !process.env.META_PHONE_NUMBER_ID) return null;
+  const { data } = await axios.get(
+    `${META_API_URL}/${process.env.META_PHONE_NUMBER_ID}`,
+    {
+      headers: { Authorization: `Bearer ${process.env.META_ACCESS_TOKEN}` },
+      params: { fields: 'quality_rating,messaging_limit_tier' },
+    }
+  );
+  return { quality: data.quality_rating ?? 'UNKNOWN', tier: data.messaging_limit_tier ?? null };
 }
 
 export async function fetchMetaTemplateStatuses() {
@@ -296,6 +316,24 @@ export function parseWhatsAppMessage(webhookBody) {
         text: reply?.title ?? '',
         type: 'interactive',
         interactiveId: reply?.id ?? null,
+        mediaId: null,
+        timestamp: msg.timestamp,
+        contactName,
+        replyToWaMsgId,
+      };
+    }
+
+    // Botón de respuesta rápida de una PLANTILLA (no de un mensaje
+    // interactivo): llega como type 'button' con el texto del botón. Sin esto
+    // el texto quedaba vacío y el bot ignoraba el "Me interesa" de la plantilla.
+    if (msg.type === 'button') {
+      return {
+        channel: 'whatsapp',
+        from: msg.from,
+        messageId: msg.id,
+        text: msg.button?.text ?? '',
+        type: 'button',
+        interactiveId: msg.button?.payload ?? null,
         mediaId: null,
         timestamp: msg.timestamp,
         contactName,

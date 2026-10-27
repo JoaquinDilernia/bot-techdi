@@ -9,10 +9,16 @@ export async function getAllTemplates() {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 
-export async function createTemplate({ name, displayName, bodyText, language, category, params }) {
+export async function createTemplate({ name, displayName, bodyText, language, category, params, buttons }) {
   const cleanName = name.trim();
   const cleanLanguage = language?.trim() || 'es_AR';
   const cleanParams = Array.isArray(params) ? params : [];
+  // Botones de respuesta rápida (ej. "Me interesa" / "No, gracias"): Meta
+  // admite hasta 3 y 25 caracteres cada uno.
+  const cleanButtons = (Array.isArray(buttons) ? buttons : [])
+    .map(b => String(b ?? '').trim().slice(0, 25))
+    .filter(Boolean)
+    .slice(0, 3);
 
   // Submit to Meta for approval — errors are surfaced so the caller can inform the user
   let metaStatus = 'PENDING';
@@ -24,6 +30,7 @@ export async function createTemplate({ name, displayName, bodyText, language, ca
       category: category || 'UTILITY',
       bodyText: bodyText.trim(),
       params: cleanParams,
+      buttons: cleanButtons,
     });
     metaStatus = result.status ?? 'PENDING';
   } catch (err) {
@@ -41,6 +48,7 @@ export async function createTemplate({ name, displayName, bodyText, language, ca
     language: cleanLanguage,
     category: category || 'UTILITY',
     params: cleanParams,
+    buttons: cleanButtons,
     metaStatus,
     metaSubmitError: metaSubmitError ?? null,
     createdAt: new Date(),

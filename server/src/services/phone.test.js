@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toWaContactId } from './phone.js';
+import { toWaContactId, isArgentineMobile } from './phone.js';
 
 const CANON = '5491149790026'; // forma canónica del número 11 4979-0026
 
@@ -92,4 +92,16 @@ test('entradas inválidas -> null', () => {
 
 test('acepta number además de string', () => {
   assert.equal(toWaContactId(1149790026), CANON);
+});
+
+test('isArgentineMobile: celular con el 9 en formato internacional de Places', () => {
+  assert.equal(isArgentineMobile('+54 9 11 2345-6789'), true);
+  assert.equal(isArgentineMobile('+54 9 299 412-3456'), true);
+});
+
+test('isArgentineMobile: fijos, otros países y vacíos', () => {
+  assert.equal(isArgentineMobile('+54 11 4345-6789'), false);
+  assert.equal(isArgentineMobile('+1 415-555-0100'), false);
+  assert.equal(isArgentineMobile(null), false);
+  assert.equal(isArgentineMobile(''), false);
 });

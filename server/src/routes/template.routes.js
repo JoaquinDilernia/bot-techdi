@@ -22,10 +22,10 @@ router.post('/sync', requireAtLeastAtencionCliente, async (req, res) => {
 });
 
 router.post('/', requireAtLeastAtencionCliente, async (req, res) => {
-  const { name, displayName, bodyText, language, category, params } = req.body;
+  const { name, displayName, bodyText, language, category, params, buttons } = req.body;
   if (!name?.trim() || !bodyText?.trim()) return res.status(400).json({ error: 'name y bodyText requeridos' });
   try {
-    const template = await createTemplate({ name, displayName: displayName || name, bodyText, language, category, params });
+    const template = await createTemplate({ name, displayName: displayName || name, bodyText, language, category, params, buttons });
     // 201 always (saved to Firestore); include metaSubmitError so frontend can warn the user
     res.status(201).json(template);
   } catch (err) {

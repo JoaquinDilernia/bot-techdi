@@ -36,6 +36,7 @@ const NAV_GROUPS = [
   { id: 'clientes', label: 'Clientes', items: [
     { to: '/customers',     label: 'Contactos',       icon: IconContacts,   minRole: 'atencion_cliente' },
     { to: '/campaigns',     label: 'Difusiones',      icon: IconMegaphone,  minRole: 'atencion_cliente' },
+    { to: '/prospects',     label: 'Prospección',     icon: IconTarget,     minRole: 'atencion_cliente' },
     { to: '/templates',     label: 'Plantillas',      icon: IconTemplate,   minRole: 'atencion_cliente' },
   ] },
   { id: 'equipo', label: 'Equipo', items: [
@@ -319,6 +320,14 @@ function IconContacts({ className }) {
       <rect x="4" y="3" width="16" height="18" rx="2" />
       <circle cx="12" cy="10" r="2.5" />
       <path d="M8 17c0-2 1.8-3 4-3s4 1 4 3" />
+    </svg>
+  );
+}
+
+function IconTarget({ className }) {
+  return (
+    <svg className={className} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="6" /><circle cx="12" cy="12" r="2" />
     </svg>
   );
 }
