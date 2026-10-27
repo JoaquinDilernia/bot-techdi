@@ -2,10 +2,10 @@ import crypto from 'crypto';
 import axios from 'axios';
 import admin from 'firebase-admin';
 import { getDb } from './firebase.service.js';
-import { qualifyProspects } from './claude.service.js';
+import { qualifyProspects, summarizeProspectOnboarding } from './claude.service.js';
 import { sendWhatsAppTemplate, sendWhatsAppMessage, fetchPhoneQuality } from './meta.service.js';
 import {
-  getOrCreateConversation, appendMessage, updateMessageStatus, updateConversationStatus,
+  getOrCreateConversation, getConversationHistory, appendMessage, updateMessageStatus, updateConversationStatus,
   dispatchConversation, addLabelToConversation,
 } from './conversation.service.js';
 import { createLabel } from './label.service.js';
@@ -580,9 +580,8 @@ function prospectNote(p) {
  *    se le responde una sola vez y el bot NO sigue → devuelve 'handled'.
  *  - cualquier otra respuesta → se marca, se crea el contacto con las notas
  *    del prospecto y la conversación se deriva a Preventa / Leads (Agustín y
- *    Sofía) en modo humano → devuelve 'escalated'. El webhook deja que el
- *    bot guarde el mensaje (en modo humano no contesta, sirve para cualquier
- *    tipo: texto, audio, foto) y después llama a sendProspectHandoff.
+ *    Sofía), pero antes TeDI hace un onboarding corto (getProspectOnboarding)
+ *    → devuelve 'onboarding' y el bot sigue normal.
  *  - no es un prospecto (o ya respondió antes) → null, sigue el flujo normal.
  */
 export async function handleProspectReply(msg) {
@@ -607,35 +606,111 @@ export async function handleProspectReply(msg) {
   }
 
   const status = INTERESTED_RE.test(text) ? 'interesado' : 'respondio';
-  await ref.update({ status, respondedAt: new Date(), statusChangedAt: new Date() });
+  await ref.update({ status, respondedAt: new Date(), statusChangedAt: new Date(), onboarding: true, onboardingTurns: 0 });
   const customer = await getOrCreateCustomer(contactId, 'whatsapp', p.shortName || msg.contactName);
   const tags = [...new Set([...(customer.tags ?? []), 'Prospección', p.rubro].filter(Boolean))];
   await updateCustomer(contactId, {
     tags,
     ...(!customer.agentNotes && { agentNotes: prospectNote(p) }),
   });
-  const areas = await getActiveAreas().catch(() => []);
-  await dispatchConversation(contactId, {
-    status: 'escalated',
-    humanMode: true,
-    assignedTo: areas.some(a => a.id === LEADS_AREA_ID) ? LEADS_AREA_ID : null,
-  });
-  console.log(`[prospect] ${contactId} respondió (${status}) → derivado a Preventa / Leads`);
-  return 'escalated';
+  console.log(`[prospect] ${contactId} respondió (${status}) → onboarding con el bot`);
+  return 'onboarding';
 }
 
-/** Aviso al negocio de que lo atiende una persona del equipo comercial. Va
-    después de guardar su mensaje, para que el chat quede en orden. */
-export async function sendProspectHandoff(contactId) {
-  const botConfigDoc = await getDb().collection(CONFIG_COLLECTION).doc('bot_config').get().catch(() => null);
-  const botConfig = botConfigDoc?.exists ? botConfigDoc.data() : {};
-  const within = isWithinBusinessHoursAt(new Date(), botConfig);
-  const text = within
-    ? '¡Buenísimo, gracias por responder! 🙌 Te paso con Agustín y Sofía, del equipo comercial de TechDI, que te van a contar cómo funcionaría para ustedes. En un ratito te escriben por acá.'
-    : `¡Buenísimo, gracias por responder! 🙌 Te paso con Agustín y Sofía, del equipo comercial de TechDI. Ahora estamos fuera de horario, pero apenas retomemos (lunes a viernes de ${botConfig.businessHoursStart ?? 9} a ${botConfig.businessHoursEnd ?? 18} hs) te escriben por acá.`;
-  await appendMessage(contactId, { role: 'assistant', content: text });
-  await sendWhatsAppMessage(contactId, text).catch(err =>
-    console.error('[prospect] Error mandando el aviso de derivación:', err.message));
+// ─────────────────────────── Onboarding ────────────────────────────────────
+// Cuando el negocio responde a la plantilla, antes de pasarlo a Preventa /
+// Leads lo atiende TeDI con unas pocas preguntas, así Agustín y Sofía le
+// escriben ya sabiendo qué necesita. Al derivar se guarda una ficha con lo
+// que contó en las notas del contacto.
+
+const ONBOARDING_MAX_TURNS = 6; // mensajes del negocio: a partir de acá se deriva igual
+
+const ONBOARDING_QUESTIONS = {
+  rubro: [
+    'qué le gustaría resolver o mejorar (consultas, reservas, turnos, pedidos, ventas, pauta)',
+    'cómo atienden hoy (WhatsApp, Instagram, teléfono; quién responde) y más o menos cuántas consultas o pedidos tienen por día',
+    'con quién estás hablando (nombre y rol en el negocio)',
+    'qué día y horario les queda cómodo para una llamada o demo de 15 minutos',
+  ],
+  web: [
+    'para qué quieren la web: mostrar el negocio y recibir consultas, o vender online',
+    'si ya tienen logo, fotos y, si venden, catálogo con precios (y si tienen dominio)',
+    'con quién estás hablando (nombre y rol en el negocio)',
+    'qué día y horario les queda cómodo para una llamada de 15 minutos para mostrarle ejemplos',
+  ],
+};
+
+function onboardingInstructions(p, turns) {
+  const questions = ONBOARDING_QUESTIONS[p.offerKind === 'web' ? 'web' : 'rubro'];
+  const lines = [
+    '--- ONBOARDING DE PROSPECTO ---',
+    `Este contacto es un negocio al que TechDI le escribió primero (en frío) ofreciendo: ${p.offer || 'nuestros servicios'}. Respondió interesado.`,
+    'Tu tarea ahora es un onboarding corto antes de pasarlo al equipo comercial (Agustín y Sofía). Agradecé la respuesta, contale en una o dos frases cómo le serviría a su negocio, y averiguá esto haciendo UNA sola pregunta por mensaje, en este orden:',
+    ...questions.map((q, i) => `${i + 1}. ${q}`),
+    'Si ya contó algo, no lo vuelvas a preguntar. Mensajes cortos y cálidos, sin presionar.',
+    'No des precios ni plazos: decile que eso lo ve con el equipo en la llamada.',
+    'Si pide hablar con una persona, pregunta precios, se impacienta o no quiere contestar, derivá enseguida.',
+    `Cuando tengas las respuestas, cerrá con una frase corta (sin repetirle todo lo que dijo) y derivá con el marcador [ESCALAR_${LEADS_AREA_ID.toUpperCase()}].`,
+  ];
+  if (turns >= ONBOARDING_MAX_TURNS - 1) {
+    lines.push(`Ya hiciste suficientes preguntas: en este mensaje cerrá y derivá con [ESCALAR_${LEADS_AREA_ID.toUpperCase()}].`);
+  }
+  return lines.join('\n');
+}
+
+/**
+ * Si el contacto es un prospecto en onboarding, suma un mensaje a la cuenta y
+ * devuelve las instrucciones para el bot (y si ya hay que derivarlo sí o sí).
+ * Si no, null.
+ */
+export async function getProspectOnboarding(contactId) {
+  const ref = getDb().collection(PROSPECTS).doc(contactId);
+  const doc = await ref.get();
+  if (!doc.exists || !doc.data().onboarding) return null;
+  const p = doc.data();
+  const turns = (p.onboardingTurns ?? 0) + 1;
+  await ref.update({ onboardingTurns: turns });
+  return { instructions: onboardingInstructions(p, turns), forceEscalate: turns >= ONBOARDING_MAX_TURNS };
+}
+
+/** Cierra el onboarding al derivar: arma la ficha y la deja en las notas del
+    contacto (arriba de lo que ya había) y en el prospecto. */
+export async function finishProspectOnboarding(contactId) {
+  const ref = getDb().collection(PROSPECTS).doc(contactId);
+  const doc = await ref.get();
+  if (!doc.exists || !doc.data().onboarding) return;
+  const p = doc.data();
+  await ref.update({ onboarding: false, onboardingEndedAt: new Date() });
+  // La plantilla y todo lo que se habló desde entonces.
+  const fromMs = tsToMs(p.sentAt) - 60 * 1000;
+  const messages = (await getConversationHistory(contactId)).filter(m => !m.timestamp || tsToMs(m.timestamp) >= fromMs);
+  let summary;
+  try {
+    summary = await summarizeProspectOnboarding(messages.slice(-30), { negocio: p.shortName || p.name, offer: p.offer });
+  } catch (err) {
+    console.error('[prospect] No se pudo resumir el onboarding de', contactId, err.message);
+    return;
+  }
+  const customer = await getOrCreateCustomer(contactId, 'whatsapp', p.shortName || p.name);
+  const day = new Date().toLocaleDateString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
+  const notes = `Onboarding del bot (${day}):\n${summary}`;
+  await Promise.all([
+    ref.update({ onboardingSummary: summary }),
+    updateCustomer(contactId, { agentNotes: [notes, customer.agentNotes].filter(Boolean).join('\n\n') }),
+  ]);
+  console.log(`[prospect] Onboarding de ${contactId} terminado, ficha guardada en las notas`);
+}
+
+/** Área a la que va un prospecto al terminar el onboarding. */
+export const PROSPECT_LEADS_AREA_ID = LEADS_AREA_ID;
+
+/** Aviso al negocio de que lo atiende una persona del equipo comercial (en
+    lugar del mensaje genérico de derivación del bot). */
+export function prospectHandoffText(botConfig = {}) {
+  const intro = '¡Gracias por contarme! 🙌 Te paso con Agustín y Sofía, del equipo comercial de TechDI, que ya tienen todo lo que hablamos.';
+  return isWithinBusinessHoursAt(new Date(), botConfig)
+    ? `${intro} En un ratito te escriben por acá.`
+    : `${intro} Ahora estamos fuera de horario, pero apenas retomemos (lunes a viernes de ${botConfig.businessHoursStart ?? 9} a ${botConfig.businessHoursEnd ?? 18} hs) te escriben por acá.`;
 }
 
 // ─────────────────────────── Panel ─────────────────────────────────────────

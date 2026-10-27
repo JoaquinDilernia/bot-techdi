@@ -285,3 +285,33 @@ Para cada uno devolvé {"i": <índice>, "fit": true|false, "score": 1-5, "reason
     };
   });
 }
+
+/** Resumen del onboarding que hizo el bot con un prospecto, para que el
+    equipo comercial lo lea antes de escribirle. */
+export async function summarizeProspectOnboarding(messages, { negocio, offer }) {
+  const formatted = messages
+    .filter(m => m.content)
+    .map(m => `${m.role === 'user' ? 'Negocio' : m.role === 'admin' ? 'TechDI (plantilla)' : 'Bot'}: ${m.content}`)
+    .join('\n');
+  const response = await callAnthropicAPI({
+    model: MODEL,
+    max_tokens: 500,
+    system: 'Preparás fichas cortas para el equipo comercial de TechDI en español rioplatense. Respondés SOLO con la ficha, en líneas que empiezan con "- ", sin encabezados ni markdown.',
+    messages: [{
+      role: 'user',
+      content: `Negocio: ${negocio}. Le ofrecimos: ${offer}.
+
+Armá la ficha con lo que surgió en la conversación (si algo no lo dijo, poné "no lo dijo"):
+- Quién habla (nombre y rol)
+- Qué necesita o le interesa resolver
+- Cómo trabaja hoy (canales, herramientas, volumen de consultas o pedidos)
+- Cuándo le queda bien una llamada o demo
+- Dudas, objeciones o temperatura (frío / tibio / caliente)
+
+Conversación:
+${formatted}`,
+    }],
+  });
+  logUsage(response.usage, 'prospect_onboarding');
+  return extractText(response).trim();
+}

@@ -20,6 +20,9 @@ import { createTicket } from './ticket.service.js';
 import { getDb } from './firebase.service.js';
 import { toWaContactId } from './phone.js';
 import { isWithinBusinessHoursAt } from './businessHours.js';
+import {
+  getProspectOnboarding, finishProspectOnboarding, prospectHandoffText, PROSPECT_LEADS_AREA_ID,
+} from './prospect.service.js';
 
 const URGENCY_KEYWORDS = [
   /urgente/i, /urgencia/i, /reclamo/i, /estafa/i, /fraude/i,
@@ -286,7 +289,15 @@ async function processIncomingMessageInternal(msg) {
     setUrgentFlag(from, true).catch(() => {});
   }
 
-  const customerContext = buildCustomerContext(customer);
+  // Prospecto que respondió a la plantilla: el bot le hace el onboarding
+  // antes de pasarlo al equipo comercial.
+  const onboarding = channel === 'whatsapp'
+    ? await getProspectOnboarding(from).catch(err => {
+      console.error('[bot] Error leyendo el onboarding de prospecto:', err.message);
+      return null;
+    })
+    : null;
+  const customerContext = [buildCustomerContext(customer), onboarding?.instructions].filter(Boolean).join('\n\n');
 
   console.log(`[bot] Llamando a Claude para ${from}`);
   let botReply;
@@ -310,7 +321,14 @@ async function processIncomingMessageInternal(msg) {
   }
   console.log(`[bot] Claude respondió (${botReply.length} chars) para ${from}`);
 
-  const { shouldEscalate, assignTo, cleanText: textAfterEscalation } = parseEscalationMarker(botReply, areas);
+  const escalation = parseEscalationMarker(botReply, areas);
+  const { cleanText: textAfterEscalation } = escalation;
+  // En el onboarding, si el bot no derivó después de varios mensajes, se
+  // deriva igual; y siempre va a Preventa / Leads.
+  const shouldEscalate = escalation.shouldEscalate || !!onboarding?.forceEscalate;
+  const assignTo = onboarding && areas.some(a => a.id === PROSPECT_LEADS_AREA_ID)
+    ? PROSPECT_LEADS_AREA_ID
+    : escalation.assignTo;
   const { shouldClose, cleanText: textAfterClose } = parseCloseMarker(textAfterEscalation);
   const { shouldCreateTicket, ticketParams, cleanText: textAfterTicket } = parseTicketMarker(textAfterClose);
   const { labels: botLabels, newLabels: botNewLabels, cleanText: textAfterLabels } = parseLabelMarkers(textAfterTicket);
@@ -397,13 +415,19 @@ async function processIncomingMessageInternal(msg) {
     console.log(`[bot] Escalando ${from} → área: ${assignTo ?? 'sin asignar'}`);
 
     const areaName = areas.find(a => a.id === assignTo)?.name ?? null;
-    const escalationMsg = buildEscalationMessage(areaName, botConfig);
+    const escalationMsg = onboarding ? prospectHandoffText(botConfig) : buildEscalationMessage(areaName, botConfig);
     try {
       await appendMessage(from, { role: 'assistant', content: escalationMsg });
       if (channel === 'whatsapp') await sendWhatsAppMessage(from, escalationMsg);
       else if (channel === 'instagram') await sendInstagramMessage(from, escalationMsg);
     } catch (err) {
       console.error('[bot] Error enviando mensaje de escalación:', err.message);
+    }
+    // Ficha del onboarding en las notas del contacto (después del aviso, así
+    // el resumen incluye toda la charla y el negocio no espera).
+    if (onboarding) {
+      await finishProspectOnboarding(from).catch(err =>
+        console.error('[bot] Error cerrando el onboarding de prospecto:', err.message));
     }
   } else if (shouldClose) {
     await updateConversationStatus(from, 'resolved');

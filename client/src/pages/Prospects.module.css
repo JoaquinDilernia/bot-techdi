@@ -297,3 +297,4 @@
 .toolbar .input { flex: 1; min-width: 220px; }
 .rowReason { display: block; margin-top: 2px; font-size: var(--font-size-xs); color: var(--color-text-faint); line-height: 1.4; }
 .webBadge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: var(--font-size-xs); background: var(--color-warning-bg, #fff4d6); color: var(--color-warning, #8a5a00); white-space: nowrap; }
+.onboardingSummary { display: block; margin-top: 4px; padding: 6px 8px; border-radius: 6px; background: var(--color-bg-subtle, rgba(127,127,127,.08)); font-size: var(--font-size-xs); white-space: pre-line; line-height: 1.45; }

@@ -386,6 +386,8 @@ function PipelineTab({ prospects, filter, setFilter, counts, setStatus, busy }) 
                 <span className={styles.muted}> · {p.rubro}, {p.zona} ({p.provincia})</span>
                 {p.offerKind === 'web' && <span className={styles.webBadge}>Sin web</span>}
                 {p.scoreReason && <span className={styles.rowReason}>IA {p.score}/5: {p.scoreReason}</span>}
+                {p.onboarding && <span className={styles.rowReason}>TeDI le está haciendo el onboarding…</span>}
+                {p.onboardingSummary && <span className={styles.onboardingSummary}>{p.onboardingSummary}</span>}
               </span>
               <span><span className={`${styles.badge} ${styles[`tone_${STATUS_TONE[p.status]}`]}`}>{STATUS_LABEL[p.status] ?? p.status}</span></span>
               <span className={styles.muted} title={p.error ?? ''}>

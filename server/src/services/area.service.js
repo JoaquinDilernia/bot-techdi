@@ -41,8 +41,11 @@ export async function getAllAreas() {
 
 export async function getActiveAreas() {
   const db = getDb();
-  const snap = await db.collection(COLLECTION).where('active', '==', true).orderBy('order').get();
-  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  // where + orderBy pide un índice compuesto que no existe: la consulta
+  // fallaba y el bot (que la llama con .catch(() => [])) se quedaba sin
+  // áreas. Son pocas, se ordenan en memoria.
+  const snap = await db.collection(COLLECTION).where('active', '==', true).get();
+  return snap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
 }
 
 export async function createArea({ name, description, active = true }) {
