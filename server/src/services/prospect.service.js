@@ -4,7 +4,12 @@ import admin from 'firebase-admin';
 import { getDb } from './firebase.service.js';
 import { qualifyProspects } from './claude.service.js';
 import { sendWhatsAppTemplate, sendWhatsAppMessage, fetchPhoneQuality } from './meta.service.js';
-import { getOrCreateConversation, appendMessage, updateMessageStatus, updateConversationStatus } from './conversation.service.js';
+import {
+  getOrCreateConversation, appendMessage, updateMessageStatus, updateConversationStatus,
+  dispatchConversation, addLabelToConversation,
+} from './conversation.service.js';
+import { createLabel } from './label.service.js';
+import { getActiveAreas } from './area.service.js';
 import { getOrCreateCustomer, updateCustomer } from './customer.service.js';
 import { getAllTemplates } from './template.service.js';
 import { toWaContactId, isArgentineMobile } from './phone.js';
@@ -71,6 +76,12 @@ const NOT_INTERESTED_RE = /^\s*(no,?\s*gracias|no me interesa|no nos interesa|no
 const INTERESTED_RE = /^\s*me interesa\b/i;
 
 const NOT_INTERESTED_REPLY = '¡Gracias por avisarnos! No te vamos a volver a escribir. Si algún día lo necesitan, acá estamos. 🙌';
+
+// Etiqueta de las conversaciones de prospección (filtro "Prospección" en
+// Conversaciones) y área a la que se derivan cuando el negocio responde:
+// Preventa / Leads, donde están Agustín y Sofía.
+export const PROSPECT_LABEL = 'Prospección';
+const LEADS_AREA_ID = 'leads';
 
 function tsToMs(ts) {
   if (!ts) return 0;
@@ -409,6 +420,13 @@ async function sentTodayCount() {
   return snap.data().count;
 }
 
+let labelReady = false;
+async function ensureProspectLabel() {
+  if (labelReady) return;
+  await createLabel(PROSPECT_LABEL, '#0E8CA3').catch(() => {});
+  labelReady = true;
+}
+
 async function sendProspect(prospect) {
   const db = getDb();
   const ref = db.collection(PROSPECTS).doc(prospect.contactId);
@@ -416,6 +434,8 @@ async function sendProspect(prospect) {
   const text = prospect.renderedText || `[Prospección: ${prospect.templateName}] ${prospect.params.join(' | ')}`;
 
   await getOrCreateConversation(contactId, 'whatsapp', prospect.shortName);
+  await ensureProspectLabel();
+  await addLabelToConversation(contactId, PROSPECT_LABEL).catch(() => {});
   const msgId = crypto.randomUUID();
   await appendMessage(contactId, { role: 'admin', content: text, msgId, msgStatus: 'sending', sentBy: 'prospeccion' });
 
@@ -515,18 +535,22 @@ function prospectNote(p) {
  * Llamado desde el webhook ANTES de que el bot procese el mensaje. Si el
  * contacto es un prospecto al que le mandamos la plantilla:
  *  - "No, gracias" → queda como no interesado (no se lo vuelve a contactar),
- *    se le responde una sola vez y el bot NO sigue (devuelve true).
+ *    se le responde una sola vez y el bot NO sigue → devuelve 'handled'.
  *  - cualquier otra respuesta → se marca, se crea el contacto con las notas
- *    del prospecto (las lee TeDI como contexto) y sigue el bot normal.
+ *    del prospecto y la conversación se deriva a Preventa / Leads (Agustín y
+ *    Sofía) en modo humano → devuelve 'escalated'. El webhook deja que el
+ *    bot guarde el mensaje (en modo humano no contesta, sirve para cualquier
+ *    tipo: texto, audio, foto) y después llama a sendProspectHandoff.
+ *  - no es un prospecto (o ya respondió antes) → null, sigue el flujo normal.
  */
 export async function handleProspectReply(msg) {
-  if (msg.channel !== 'whatsapp') return false;
+  if (msg.channel !== 'whatsapp') return null;
   const contactId = toWaContactId(msg.from) ?? msg.from;
   const ref = getDb().collection(PROSPECTS).doc(contactId);
   const doc = await ref.get();
-  if (!doc.exists) return false;
+  if (!doc.exists) return null;
   const p = doc.data();
-  if (p.status !== 'enviado') return false; // solo la primera respuesta cambia el estado
+  if (p.status !== 'enviado') return null; // solo la primera respuesta cambia el estado
 
   const text = msg.text ?? '';
   if (NOT_INTERESTED_RE.test(text)) {
@@ -537,7 +561,7 @@ export async function handleProspectReply(msg) {
       console.error('[prospect] Error mandando la respuesta de "no interesa":', err.message));
     await updateConversationStatus(contactId, 'resolved').catch(() => {});
     console.log(`[prospect] ${contactId} respondió que no le interesa`);
-    return true;
+    return 'handled';
   }
 
   const status = INTERESTED_RE.test(text) ? 'interesado' : 'respondio';
@@ -548,8 +572,28 @@ export async function handleProspectReply(msg) {
     tags,
     ...(!customer.agentNotes && { agentNotes: prospectNote(p) }),
   });
-  console.log(`[prospect] ${contactId} respondió (${status})`);
-  return false;
+  const areas = await getActiveAreas().catch(() => []);
+  await dispatchConversation(contactId, {
+    status: 'escalated',
+    humanMode: true,
+    assignedTo: areas.some(a => a.id === LEADS_AREA_ID) ? LEADS_AREA_ID : null,
+  });
+  console.log(`[prospect] ${contactId} respondió (${status}) → derivado a Preventa / Leads`);
+  return 'escalated';
+}
+
+/** Aviso al negocio de que lo atiende una persona del equipo comercial. Va
+    después de guardar su mensaje, para que el chat quede en orden. */
+export async function sendProspectHandoff(contactId) {
+  const botConfigDoc = await getDb().collection(CONFIG_COLLECTION).doc('bot_config').get().catch(() => null);
+  const botConfig = botConfigDoc?.exists ? botConfigDoc.data() : {};
+  const within = isWithinBusinessHoursAt(new Date(), botConfig);
+  const text = within
+    ? '¡Buenísimo, gracias por responder! 🙌 Te paso con Agustín y Sofía, del equipo comercial de TechDI, que te van a contar cómo funcionaría para ustedes. En un ratito te escriben por acá.'
+    : `¡Buenísimo, gracias por responder! 🙌 Te paso con Agustín y Sofía, del equipo comercial de TechDI. Ahora estamos fuera de horario, pero apenas retomemos (lunes a viernes de ${botConfig.businessHoursStart ?? 9} a ${botConfig.businessHoursEnd ?? 18} hs) te escriben por acá.`;
+  await appendMessage(contactId, { role: 'assistant', content: text });
+  await sendWhatsAppMessage(contactId, text).catch(err =>
+    console.error('[prospect] Error mandando el aviso de derivación:', err.message));
 }
 
 // ─────────────────────────── Panel ─────────────────────────────────────────

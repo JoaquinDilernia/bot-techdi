@@ -12,6 +12,7 @@ import { toWaContactId } from '../services/phone.js';
 import {
   updateProspectStatusByWaMsgId,
   handleProspectReply,
+  sendProspectHandoff,
   handlePhoneQualityWebhook,
   handleTemplateStatusWebhook,
 } from '../services/prospect.service.js';
@@ -99,14 +100,20 @@ router.post('/', async (req, res) => {
       const msg = parseWhatsAppMessage(body);
       if (msg) {
         console.log(`[webhook] WPP entrante de ${msg.from}: ${msg.text?.substring(0, 50)}`);
-        // Si es la respuesta de un prospecto, se registra antes de que el bot
-        // cargue el contacto (así TeDI ya ve las notas del prospecto). Un
-        // "No, gracias" se contesta acá y el bot no sigue.
-        const handled = await handleProspectReply(msg).catch(err => {
+        // Si es la respuesta de un prospecto, se resuelve antes de que el bot
+        // cargue la conversación: un "No, gracias" se contesta acá y el bot no
+        // sigue; cualquier otra respuesta deja la conversación derivada a
+        // Preventa / Leads, el bot solo guarda el mensaje y después sale el
+        // aviso de que lo atiende el equipo comercial.
+        const prospect = await handleProspectReply(msg).catch(err => {
           console.error('[webhook] Error procesando respuesta de prospecto:', err.message);
-          return false;
+          return null;
         });
-        if (!handled) await processIncomingMessage(msg);
+        if (prospect !== 'handled') await processIncomingMessage(msg);
+        if (prospect === 'escalated') {
+          await sendProspectHandoff(toWaContactId(msg.from) ?? msg.from).catch(err =>
+            console.error('[webhook] Error en el aviso de derivación de prospecto:', err.message));
+        }
       }
     } else if (object === 'instagram') {
       const msg = parseInstagramMessage(body);

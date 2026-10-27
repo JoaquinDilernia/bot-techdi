@@ -19,6 +19,7 @@ const FILTERS = [
   { value: 'bot',           label: 'Bot' },
   { value: 'mine',          label: 'Mis casos' },
   { value: 'teams',         label: 'Equipos',  minRole: 'atencion_cliente' },
+  { value: 'prospeccion',   label: 'Prospección', minRole: 'atencion_cliente' },
   { value: 'archived',      label: 'Archivados' },
 ];
 
@@ -1544,6 +1545,10 @@ export default function Conversations() {
           // Derivadas (a un área o sin asignar) que todavía no tomó ningún agente.
           if (isConvArchived) return false;
           if (pillOf(c).tone !== 'wait') return false;
+        } else if (filter === 'prospeccion') {
+          // Negocios a los que les escribió la prospección, hayan respondido o
+          // no (las que no respondieron quedan archivadas, igual se muestran).
+          if (!(c.labels ?? []).includes('Prospección')) return false;
         } else if (filter === 'teams') {
           if (isConvArchived) return false;
           if (!convHuman) return false;
