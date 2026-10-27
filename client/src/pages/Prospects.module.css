@@ -25,6 +25,9 @@
   min-height: 0; /* deja que el overflow-y realmente scrollee dentro del panel */
   overflow-y: auto;
 }
+/* Sin esto, los bloques con overflow: hidden (las tablas) se achican para
+   entrar en la pantalla y cortan las filas en vez de dejar scrollear. */
+.body > * { flex-shrink: 0; }
 
 .empty { text-align: center; color: var(--color-text-faint); font-size: var(--font-size-sm); padding: var(--space-8) 0; }
 .hint { font-size: var(--font-size-xs); color: var(--color-text-faint); margin: 0; line-height: 1.5; }
