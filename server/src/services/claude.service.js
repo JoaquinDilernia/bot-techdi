@@ -235,7 +235,7 @@ function buildMessages(conversationHistory, newMessage, imageData = null) {
  * de la plantilla. Si Claude devuelve algo que no se puede leer, se marca todo
  * como no calificado en vez de mandar mensajes a ciegas.
  */
-export async function qualifyProspects(businesses, { rubro, zona, offer }) {
+export async function qualifyProspects(businesses, { rubro, zona, offer, criteria }) {
   if (!businesses?.length) return [];
   const list = businesses.map((b, i) => ({
     i,
@@ -252,7 +252,7 @@ export async function qualifyProspects(businesses, { rubro, zona, offer }) {
     max_tokens: 4000,
     system: `Sos parte del equipo comercial de TechDI, una consultora de tecnología argentina (agentes de IA para WhatsApp e Instagram, agente de pauta para Meta Ads, sistemas a medida, webs y tiendas).
 Calificás negocios encontrados en Google Maps para decidir si vale la pena escribirles ofreciendo: ${offer || 'nuestros servicios'}.
-Criterios: que sea un negocio real y en funcionamiento del rubro buscado (no una cadena enorme ni una sucursal de una franquicia gigante, no un organismo público, no un particular), y que por su tamaño (reseñas, web) tenga volumen de consultas como para que le sirva.
+Criterios: que sea un negocio real y en funcionamiento del rubro buscado (no una cadena enorme ni una sucursal de una franquicia gigante, no un organismo público, no un particular), y ${criteria || "que por su tamaño (reseñas, web) tenga volumen de consultas como para que le sirva"}.
 Respondés SOLO con un array JSON, sin texto alrededor.`,
     messages: [{
       role: 'user',

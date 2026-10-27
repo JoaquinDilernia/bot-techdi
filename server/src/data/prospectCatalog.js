@@ -243,3 +243,38 @@ const ZONE_BY_ID = new Map(ZONES.map(z => [z.id, z]));
 
 export function getRubro(id) { return RUBRO_BY_ID.get(id) ?? null; }
 export function getZone(id) { return ZONE_BY_ID.get(id) ?? null; }
+
+// ─────────────────────── Oferta de web ─────────────────────────────────────
+// A los negocios sin web propia se les ofrece una landing o tienda online en
+// lugar del producto de su rubro (es lo que más les falta y lo más fácil de
+// mostrar). Tiene su propia plantilla, igual para todos los rubros.
+export const WEB_OFFER = {
+  label: 'Sin web: landing o tienda online',
+  template: 'prospeccion_web',
+  offer: 'página web propia: landing para mostrar el negocio y recibir consultas por WhatsApp, o tienda online con catálogo y carrito, diseñada, publicada y mantenida por nosotros',
+  // Para calificar: acá no importa que sea grande, sino que esté activo y
+  // que una web le sume (los muy chicos o informales igual quedan afuera).
+  criteria: 'que esté activo (tiene reseñas recientes o un volumen razonable de reseñas) y que una web propia le sume para conseguir clientes; no hace falta que sea grande',
+};
+
+// Dominios que NO son una web propia: redes, agregadores de links, apps de
+// delivery y marketplaces. Un negocio que en Maps solo tiene uno de estos
+// cuenta como "sin web".
+const NOT_OWN_WEBSITE = [
+  'instagram.com', 'facebook.com', 'fb.com', 'fb.me', 'm.facebook.com', 'tiktok.com', 'twitter.com', 'x.com',
+  'youtube.com', 'linkedin.com', 'wa.me', 'whatsapp.com', 'api.whatsapp.com', 'wa.link',
+  'linktr.ee', 'linkin.bio', 'bio.link', 'beacons.ai', 'taplink.cc', 'campsite.bio', 'linkbio.co', 'msha.ke',
+  'pedidosya.com', 'pedidosya.com.ar', 'rappi.com.ar', 'rappi.com', 'mercadolibre.com.ar', 'mercadoshops.com.ar',
+  'google.com', 'goo.gl', 'g.page', 'business.site', 'maps.app.goo.gl',
+];
+
+export function hasOwnWebsite(url) {
+  if (!url) return false;
+  let host;
+  try {
+    host = new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).hostname.toLowerCase().replace(/^www\./, '');
+  } catch {
+    return false;
+  }
+  return !NOT_OWN_WEBSITE.some(d => host === d || host.endsWith(`.${d}`));
+}

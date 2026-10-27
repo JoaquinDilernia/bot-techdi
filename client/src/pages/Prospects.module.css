@@ -296,3 +296,4 @@
 .expandBtn:hover { color: var(--color-text); }
 .toolbar .input { flex: 1; min-width: 220px; }
 .rowReason { display: block; margin-top: 2px; font-size: var(--font-size-xs); color: var(--color-text-faint); line-height: 1.4; }
+.webBadge { display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; font-size: var(--font-size-xs); background: var(--color-warning-bg, #fff4d6); color: var(--color-warning, #8a5a00); white-space: nowrap; }

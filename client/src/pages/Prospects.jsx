@@ -292,6 +292,7 @@ function ApproveTab({ pending, selected, toggleSelected, setSelected, setStatus,
                 <div className={styles.cardTitle}>
                   <strong>{p.shortName || p.name}</strong>
                   <span className={styles.muted}>{p.rubro} · {p.zona}, {p.provincia}</span>
+                  {p.offerKind === 'web' && <span className={styles.webBadge}>Sin web · se le ofrece landing/tienda</span>}
                 </div>
                 <span className={styles.score} title="Puntaje de la IA (1 a 5)">{p.score}/5</span>
               </div>
@@ -383,6 +384,7 @@ function PipelineTab({ prospects, filter, setFilter, counts, setStatus, busy }) 
                   ? <a className={styles.nameLink} href={`#/conversations?open=${encodeURIComponent(p.contactId)}`}>{p.shortName || p.name}</a>
                   : <a className={styles.nameLink} href={p.mapsUrl ?? '#'} target="_blank" rel="noreferrer">{p.shortName || p.name}</a>}
                 <span className={styles.muted}> · {p.rubro}, {p.zona} ({p.provincia})</span>
+                {p.offerKind === 'web' && <span className={styles.webBadge}>Sin web</span>}
                 {p.scoreReason && <span className={styles.rowReason}>IA {p.score}/5: {p.scoreReason}</span>}
               </span>
               <span><span className={`${styles.badge} ${styles[`tone_${STATUS_TONE[p.status]}`]}`}>{STATUS_LABEL[p.status] ?? p.status}</span></span>
@@ -411,10 +413,32 @@ function PipelineTab({ prospects, filter, setFilter, counts, setStatus, busy }) 
   );
 }
 
+function TemplateSelect({ templates, value, onChange }) {
+  const tpl = templates.find(t => t.name === value);
+  return (
+    <div className={styles.field}>
+      <label className={styles.label}>Plantilla</label>
+      <select className={styles.input} value={value ?? ''} onChange={e => onChange(e.target.value)}>
+        {!tpl && <option value={value}>{value} (no está en Plantillas)</option>}
+        {templates.map(t => (
+          <option key={t.id} value={t.name}>{t.displayName} ({t.metaStatus ?? 'sin sincronizar'})</option>
+        ))}
+      </select>
+      {tpl && <p className={styles.messagePreview}>{tpl.bodyText}{tpl.buttons?.length ? `
+
+[${tpl.buttons.join('] [')}]` : ''}</p>}
+      {tpl && tpl.metaStatus !== 'APPROVED' && (
+        <p className={styles.hint}>⚠ Todavía no está aprobada por Meta: se puede buscar y aprobar negocios, pero no se manda hasta que la aprueben.</p>
+      )}
+    </div>
+  );
+}
+
 function ConfigTab({ config, catalog, templates, saveConfig, busy }) {
   const [dailyCap, setDailyCap] = useState(config.dailyCap);
   const [autoApprove, setAutoApprove] = useState(config.autoApprove);
   const [templateNames, setTemplateNames] = useState(config.templates);
+  const [webOffer, setWebOffer] = useState(config.webOffer ?? 'mix');
   const [rubroIds, setRubroIds] = useState(new Set(config.rubroIds));
   const [zoneIds, setZoneIds] = useState(new Set(config.zoneIds));
   const [openProvinces, setOpenProvinces] = useState(new Set());
@@ -446,6 +470,7 @@ function ConfigTab({ config, catalog, templates, saveConfig, busy }) {
       dailyCap,
       autoApprove,
       templates: templateNames,
+      webOffer,
       rubroIds: [...rubroIds],
       zoneIds: [...zoneIds],
     });
@@ -476,7 +501,6 @@ function ConfigTab({ config, catalog, templates, saveConfig, busy }) {
       {Object.entries(catalog.groups).map(([groupId, group]) => {
         const rubros = catalog.rubros.filter(r => r.group === groupId);
         const selectedCount = rubros.filter(r => rubroIds.has(r.id)).length;
-        const tpl = templates.find(t => t.name === templateNames[groupId]);
         return (
           <div key={groupId} className={styles.searchCard}>
             <div className={styles.groupHead}>
@@ -503,26 +527,36 @@ function ConfigTab({ config, catalog, templates, saveConfig, busy }) {
                 </button>
               ))}
             </div>
-            <div className={styles.field}>
-              <label className={styles.label}>Plantilla</label>
-              <select
-                className={styles.input}
-                value={templateNames[groupId] ?? ''}
-                onChange={e => { dirty(); setTemplateNames(prev => ({ ...prev, [groupId]: e.target.value })); }}
-              >
-                {!tpl && <option value={templateNames[groupId]}>{templateNames[groupId]} (no está en Plantillas)</option>}
-                {templates.map(t => (
-                  <option key={t.id} value={t.name}>{t.displayName} ({t.metaStatus ?? 'sin sincronizar'})</option>
-                ))}
-              </select>
-              {tpl && <p className={styles.messagePreview}>{tpl.bodyText}{tpl.buttons?.length ? `\n\n[${tpl.buttons.join('] [')}]` : ''}</p>}
-              {tpl && tpl.metaStatus !== 'APPROVED' && (
-                <p className={styles.hint}>⚠ Todavía no está aprobada por Meta: se puede buscar y aprobar negocios, pero no se manda hasta que la aprueben.</p>
-              )}
-            </div>
+            <TemplateSelect
+              templates={templates}
+              value={templateNames[groupId]}
+              onChange={v => { dirty(); setTemplateNames(prev => ({ ...prev, [groupId]: v })); }}
+            />
           </div>
         );
       })}
+
+      <h2 className={styles.formTitle}>Negocios sin web</h2>
+      <p className={styles.hint}>
+        Si en Maps no tiene web propia (o solo tiene Instagram, Facebook, Linktree o PedidosYa), en lugar del producto de su rubro se le ofrece una landing o tienda online.
+      </p>
+      <div className={styles.searchCard}>
+        <div className={styles.field}>
+          <label className={styles.label}>Qué hacer con los que no tienen web</label>
+          <select className={styles.input} value={webOffer} onChange={e => { setWebOffer(e.target.value); dirty(); }}>
+            <option value="mix">Ofrecerles web; al resto, lo de su rubro</option>
+            <option value="only">Buscar solo negocios sin web</option>
+            <option value="off">No distinguir (a todos lo de su rubro)</option>
+          </select>
+        </div>
+        {webOffer !== 'off' && (
+          <TemplateSelect
+            templates={templates}
+            value={templateNames.web}
+            onChange={v => { dirty(); setTemplateNames(prev => ({ ...prev, web: v })); }}
+          />
+        )}
+      </div>
 
       <h2 className={styles.formTitle}>Zonas</h2>
       <p className={styles.hint}>

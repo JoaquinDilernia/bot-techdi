@@ -15,7 +15,7 @@ import { getAllTemplates } from './template.service.js';
 import { toWaContactId, isArgentineMobile } from './phone.js';
 import { isWithinBusinessHoursAt } from './businessHours.js';
 import { arMidnight } from './statsAggregate.js';
-import { GROUPS, RUBROS, PROVINCES, getRubro, getZone } from '../data/prospectCatalog.js';
+import { GROUPS, RUBROS, PROVINCES, WEB_OFFER, getRubro, getZone, hasOwnWebsite } from '../data/prospectCatalog.js';
 
 // ─────────────────────────── Prospección ───────────────────────────────────
 // Busca negocios en Google Maps (Places API), los califica con Claude y les
@@ -67,10 +67,18 @@ const DEFAULT_CONFIG = {
   pausedAt: null,
   rubroIds: [],
   zoneIds: [],
-  // Plantilla por grupo de rubros (gastronomía, turnos, comercios, servicios).
-  templates: Object.fromEntries(Object.entries(GROUPS).map(([k, g]) => [k, g.template])),
+  // Plantilla por grupo de rubros (gastronomía, turnos, comercios, servicios),
+  // más "web": la de los negocios sin web propia.
+  templates: {
+    ...Object.fromEntries(Object.entries(GROUPS).map(([k, g]) => [k, g.template])),
+    web: WEB_OFFER.template,
+  },
+  // Negocios sin web propia: 'mix' les ofrece landing/tienda y al resto lo de
+  // su rubro; 'only' busca solo a los que no tienen web; 'off' no distingue.
+  webOffer: 'mix',
   lastQuality: null,
 };
+const WEB_OFFER_MODES = ['mix', 'only', 'off'];
 
 const NOT_INTERESTED_RE = /^\s*(no,?\s*gracias|no me interesa|no nos interesa|no gracias)\b/i;
 const INTERESTED_RE = /^\s*me interesa\b/i;
@@ -114,15 +122,16 @@ export async function updateProspectConfig(patch) {
   if (Array.isArray(patch.zoneIds)) update.zoneIds = [...new Set(patch.zoneIds)].filter(id => getZone(id));
   if (patch.templates && typeof patch.templates === 'object') {
     update.templates = Object.fromEntries(
-      Object.keys(GROUPS).map(k => [k, String(patch.templates[k] ?? '').trim() || GROUPS[k].template])
+      Object.entries(DEFAULT_CONFIG.templates).map(([k, def]) => [k, String(patch.templates[k] ?? '').trim() || def])
     );
   }
+  if (WEB_OFFER_MODES.includes(patch.webOffer)) update.webOffer = patch.webOffer;
   await configRef().set(update, { merge: true });
   return getProspectConfig();
 }
 
 export function getProspectCatalog() {
-  return { groups: GROUPS, rubros: RUBROS, provinces: PROVINCES };
+  return { groups: GROUPS, webOffer: WEB_OFFER, rubros: RUBROS, provinces: PROVINCES };
 }
 
 export async function pauseProspecting(reason) {
@@ -229,24 +238,35 @@ function renderTemplate(bodyText, params) {
  * descarta lo que no sirve (cerrados, fijos, ya contactados, ya clientes),
  * califica con Claude y guarda los nuevos prospectos.
  */
-async function runCombo({ id: comboId, rubro, zone }, { maxNew, autoApprove, templates, templateNames }) {
+async function runCombo({ id: comboId, rubro, zone }, { maxNew, autoApprove, templates, templateNames, webOffer }) {
   const db = getDb();
   const group = GROUPS[rubro.group];
-  const templateName = templateNames[rubro.group] || group.template;
-  const template = templates.find(t => t.name === templateName);
+  // Dos ofertas posibles por búsqueda: la del rubro, o la de web para los
+  // negocios que no tienen una propia.
+  const offers = {
+    rubro: { offer: group.offer, templateName: templateNames[rubro.group] || group.template },
+    web: { offer: WEB_OFFER.offer, criteria: WEB_OFFER.criteria, templateName: templateNames.web || WEB_OFFER.template },
+  };
+  for (const o of Object.values(offers)) o.template = templates.find(t => t.name === o.templateName);
+  const offerKind = p => (webOffer !== 'off' && !p.hasWebsite ? 'web' : 'rubro');
   const textQuery = `${rubro.query} en ${zone.query}`;
 
   const candidates = [];
   const seen = new Set();
   let pageToken = null;
   let found = 0;
+  // Nuevos que Maps devolvió, con y sin web: con webOffer 'only' los que
+  // tienen web no se toman, pero siguen contando para saber si la búsqueda
+  // se agotó de verdad (si se cambia de modo, todavía hay a quién escribirle).
+  let newAll = 0;
+  let newNoWeb = 0;
   for (let page = 0; page < PLACES_MAX_PAGES && candidates.length < maxNew; page++) {
     const res = await searchPlaces(textQuery, pageToken);
     found += res.places.length;
     const mapped = res.places.map(mapPlace)
       .filter(p => p.businessStatus !== 'CLOSED_PERMANENTLY' && p.businessStatus !== 'CLOSED_TEMPORARILY')
       .filter(p => isArgentineMobile(p.phone))
-      .map(p => ({ ...p, contactId: toWaContactId(p.phone) }))
+      .map(p => ({ ...p, contactId: toWaContactId(p.phone), hasWebsite: hasOwnWebsite(p.website) }))
       .filter(p => p.contactId && !seen.has(p.contactId));
     mapped.forEach(p => seen.add(p.contactId));
 
@@ -258,7 +278,11 @@ async function runCombo({ id: comboId, rubro, zone }, { maxNew, autoApprove, tem
         db.getAll(...mapped.map(p => db.collection(CUSTOMERS).doc(p.contactId))),
       ]);
       mapped.forEach((p, i) => {
-        if (!prospectDocs[i].exists && !customerDocs[i].exists) candidates.push(p);
+        if (prospectDocs[i].exists || customerDocs[i].exists) return;
+        newAll++;
+        if (!p.hasWebsite) newNoWeb++;
+        if (webOffer === 'only' && p.hasWebsite) return;
+        candidates.push(p);
       });
     }
     pageToken = res.nextPageToken;
@@ -268,10 +292,21 @@ async function runCombo({ id: comboId, rubro, zone }, { maxNew, autoApprove, tem
   const batch = candidates.slice(0, maxNew);
   let added = 0;
   if (batch.length > 0) {
-    const results = await qualifyProspects(batch, { rubro: rubro.label, zona: `${zone.name} (${zone.province})`, offer: group.offer });
+    // Se califica por separado cada oferta: si un negocio sirve depende de
+    // qué le vamos a ofrecer (a uno sin web le sirve la landing aunque sea
+    // chico para un bot).
+    const results = new Map();
+    for (const kind of Object.keys(offers)) {
+      const items = batch.filter(p => offerKind(p) === kind);
+      if (items.length === 0) continue;
+      const qs = await qualifyProspects(items, { rubro: rubro.label, zona: `${zone.name} (${zone.province})`, offer: offers[kind].offer, criteria: offers[kind].criteria });
+      items.forEach((p, i) => results.set(p.contactId, qs[i]));
+    }
     const writes = db.batch();
-    batch.forEach((p, i) => {
-      const q = results[i];
+    batch.forEach(p => {
+      const q = results.get(p.contactId);
+      const kind = offerKind(p);
+      const { offer, templateName, template } = offers[kind];
       // Las plantillas de prospección tienen una sola variable: el nombre del
       // negocio. Meta rechaza parámetros con saltos de línea o tabs.
       const params = [q.shortName.replace(/[\n\t]+/g, ' ')];
@@ -293,7 +328,8 @@ async function runCombo({ id: comboId, rubro, zone }, { maxNew, autoApprove, tem
         zona: zone.name,
         provinciaId: zone.provinceId,
         provincia: zone.province,
-        offer: group.offer,
+        offerKind: kind,
+        offer,
         templateName,
         language: template?.language ?? 'es_AR',
         params,
@@ -310,7 +346,7 @@ async function runCombo({ id: comboId, rubro, zone }, { maxNew, autoApprove, tem
     await writes.commit();
   }
   console.log(`[prospect] "${textQuery}": ${found} en Maps, ${batch.length} candidatos nuevos, ${added} calificados`);
-  return { found, candidates: batch.length, added };
+  return { found, candidates: batch.length, newAll, newNoWeb, added };
 }
 
 async function countByStatus(statuses) {
@@ -344,6 +380,7 @@ async function orderedCombos(config) {
       const id = `${rubro.id}__${zone.id}`;
       const run = runs.get(id);
       if (run?.exhaustedUntil && tsToMs(run.exhaustedUntil) > now) continue;
+      if (config.webOffer === 'only' && run?.exhaustedNoWebUntil && tsToMs(run.exhaustedNoWebUntil) > now) continue;
       combos.push({ id, rubro, zone, lastRunMs: tsToMs(run?.lastRunAt), hash: dayHash(id) });
     }
   }
@@ -388,7 +425,10 @@ async function runDailySearchInternal({ force = false } = {}) {
     if (needed <= 0) break;
     const label = `${combo.rubro.label} en ${combo.zone.name} (${combo.zone.province})`;
     try {
-      const r = await runCombo(combo, { maxNew: needed, autoApprove: config.autoApprove, templates, templateNames: config.templates });
+      const r = await runCombo(combo, {
+        maxNew: needed, autoApprove: config.autoApprove, templates, templateNames: config.templates, webOffer: config.webOffer,
+      });
+      const exhaustedUntil = new Date(Date.now() + EXHAUSTED_DAYS * 86400000);
       needed -= r.added;
       await db.collection(RUNS).doc(combo.id).set({
         rubroId: combo.rubro.id,
@@ -399,7 +439,9 @@ async function runDailySearchInternal({ force = false } = {}) {
         runs: admin.firestore.FieldValue.increment(1),
         totalAdded: admin.firestore.FieldValue.increment(r.added),
         // Sin candidatos nuevos = Maps ya no tiene nada que no hayamos visto.
-        exhaustedUntil: r.candidates === 0 ? new Date(Date.now() + EXHAUSTED_DAYS * 86400000) : null,
+        exhaustedUntil: r.newAll === 0 ? exhaustedUntil : null,
+        // Ya no quedan negocios sin web: solo cuenta cuando se buscan solo esos.
+        exhaustedNoWebUntil: r.newNoWeb === 0 ? exhaustedUntil : null,
       }, { merge: true });
       summary.push({ search: label, ...r });
     } catch (err) {
