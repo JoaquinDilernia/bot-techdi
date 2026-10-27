@@ -295,3 +295,4 @@
 }
 .expandBtn:hover { color: var(--color-text); }
 .toolbar .input { flex: 1; min-width: 220px; }
+.rowReason { display: block; margin-top: 2px; font-size: var(--font-size-xs); color: var(--color-text-faint); line-height: 1.4; }

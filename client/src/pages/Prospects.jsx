@@ -377,8 +377,13 @@ function PipelineTab({ prospects, filter, setFilter, counts, setStatus, busy }) 
           {visible.map(p => (
             <div key={p.id} className={`${styles.tableRow} ${styles.cols6}`}>
               <span>
-                <a className={styles.nameLink} href={`#/conversations?open=${encodeURIComponent(p.contactId)}`}>{p.shortName || p.name}</a>
+                {/* Solo los que recibieron la plantilla tienen conversación; al
+                    resto se lo abre en Maps para poder mirarlo. */}
+                {p.sentAt || RESPONDED.includes(p.status)
+                  ? <a className={styles.nameLink} href={`#/conversations?open=${encodeURIComponent(p.contactId)}`}>{p.shortName || p.name}</a>
+                  : <a className={styles.nameLink} href={p.mapsUrl ?? '#'} target="_blank" rel="noreferrer">{p.shortName || p.name}</a>}
                 <span className={styles.muted}> · {p.rubro}, {p.zona} ({p.provincia})</span>
+                {p.scoreReason && <span className={styles.rowReason}>IA {p.score}/5: {p.scoreReason}</span>}
               </span>
               <span><span className={`${styles.badge} ${styles[`tone_${STATUS_TONE[p.status]}`]}`}>{STATUS_LABEL[p.status] ?? p.status}</span></span>
               <span className={styles.muted} title={p.error ?? ''}>
