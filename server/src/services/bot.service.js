@@ -21,7 +21,7 @@ import { getDb } from './firebase.service.js';
 import { toWaContactId } from './phone.js';
 import { isWithinBusinessHoursAt } from './businessHours.js';
 import {
-  getProspectOnboarding, finishProspectOnboarding, prospectHandoffText, PROSPECT_LEADS_AREA_ID,
+  getProspectOnboarding, finishProspectOnboarding, prospectHandoffText, pickProspectOwner, PROSPECT_LEADS_AREA_ID,
 } from './prospect.service.js';
 
 const URGENCY_KEYWORDS = [
@@ -407,15 +407,23 @@ async function processIncomingMessageInternal(msg) {
   }
 
   if (shouldEscalate) {
+    // Prospecto: va a Agustín o a Sofía, mitad y mitad (si no, a Preventa / Leads).
+    const owner = onboarding
+      ? await pickProspectOwner(areas).catch(err => {
+        console.error('[bot] Error eligiendo a quién va el prospecto:', err.message);
+        return null;
+      })
+      : null;
+    const target = owner?.areaId ?? assignTo;
     await dispatchConversation(from, {
       status: 'escalated',
       humanMode: true,
-      assignedTo: assignTo ?? null,
+      assignedTo: target ?? null,
     });
-    console.log(`[bot] Escalando ${from} → área: ${assignTo ?? 'sin asignar'}`);
+    console.log(`[bot] Escalando ${from} → área: ${target ?? 'sin asignar'}`);
 
-    const areaName = areas.find(a => a.id === assignTo)?.name ?? null;
-    const escalationMsg = onboarding ? prospectHandoffText(botConfig) : buildEscalationMessage(areaName, botConfig);
+    const areaName = areas.find(a => a.id === target)?.name ?? null;
+    const escalationMsg = onboarding ? prospectHandoffText(botConfig, owner?.name) : buildEscalationMessage(areaName, botConfig);
     try {
       await appendMessage(from, { role: 'assistant', content: escalationMsg });
       if (channel === 'whatsapp') await sendWhatsAppMessage(from, escalationMsg);
@@ -426,7 +434,7 @@ async function processIncomingMessageInternal(msg) {
     // Ficha del onboarding en las notas del contacto (después del aviso, así
     // el resumen incluye toda la charla y el negocio no espera).
     if (onboarding) {
-      await finishProspectOnboarding(from).catch(err =>
+      await finishProspectOnboarding(from, owner).catch(err =>
         console.error('[bot] Error cerrando el onboarding de prospecto:', err.message));
     }
   } else if (shouldClose) {

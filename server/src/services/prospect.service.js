@@ -675,12 +675,12 @@ export async function getProspectOnboarding(contactId) {
 
 /** Cierra el onboarding al derivar: arma la ficha y la deja en las notas del
     contacto (arriba de lo que ya había) y en el prospecto. */
-export async function finishProspectOnboarding(contactId) {
+export async function finishProspectOnboarding(contactId, owner = null) {
   const ref = getDb().collection(PROSPECTS).doc(contactId);
   const doc = await ref.get();
   if (!doc.exists || !doc.data().onboarding) return;
   const p = doc.data();
-  await ref.update({ onboarding: false, onboardingEndedAt: new Date() });
+  await ref.update({ onboarding: false, onboardingEndedAt: new Date(), assignedOwner: owner?.name ?? null });
   // La plantilla y todo lo que se habló desde entonces.
   const fromMs = tsToMs(p.sentAt) - 60 * 1000;
   const messages = (await getConversationHistory(contactId)).filter(m => !m.timestamp || tsToMs(m.timestamp) >= fromMs);
@@ -701,13 +701,35 @@ export async function finishProspectOnboarding(contactId) {
   console.log(`[prospect] Onboarding de ${contactId} terminado, ficha guardada en las notas`);
 }
 
-/** Área a la que va un prospecto al terminar el onboarding. */
+/** Área a la que va un prospecto al terminar el onboarding si no se puede
+    asignar a una persona. */
 export const PROSPECT_LEADS_AREA_ID = LEADS_AREA_ID;
+
+// Los prospectos se reparten mitad y mitad entre Agustín y Sofía: cada uno
+// tiene su área personal. Se alterna con un contador, así queda parejo.
+const PROSPECT_OWNERS = [
+  { areaId: 'agustin_bana', name: 'Agustín' },
+  { areaId: 'sofia_di_lernia', name: 'Sofía' },
+];
+
+/** El próximo en la rueda entre los que tienen el área activa, o null. */
+export async function pickProspectOwner(areas = []) {
+  const owners = PROSPECT_OWNERS.filter(o => areas.some(a => a.id === o.areaId));
+  if (owners.length === 0) return null;
+  const ref = configRef();
+  const turn = await getDb().runTransaction(async tx => {
+    const n = (await tx.get(ref)).data()?.ownerTurn ?? 0;
+    tx.set(ref, { ownerTurn: n + 1 }, { merge: true });
+    return n;
+  });
+  return owners[turn % owners.length];
+}
 
 /** Aviso al negocio de que lo atiende una persona del equipo comercial (en
     lugar del mensaje genérico de derivación del bot). */
-export function prospectHandoffText(botConfig = {}) {
-  const intro = '¡Gracias por contarme! 🙌 Te paso con Agustín y Sofía, del equipo comercial de TechDI, que ya tienen todo lo que hablamos.';
+export function prospectHandoffText(botConfig = {}, ownerName = null) {
+  const who = ownerName ? `${ownerName}, del equipo comercial de TechDI, que ya tiene` : 'Agustín y Sofía, del equipo comercial de TechDI, que ya tienen';
+  const intro = `¡Gracias por contarme! 🙌 Te paso con ${who} todo lo que hablamos.`;
   return isWithinBusinessHoursAt(new Date(), botConfig)
     ? `${intro} En un ratito te escriben por acá.`
     : `${intro} Ahora estamos fuera de horario, pero apenas retomemos (lunes a viernes de ${botConfig.businessHoursStart ?? 9} a ${botConfig.businessHoursEnd ?? 18} hs) te escriben por acá.`;
