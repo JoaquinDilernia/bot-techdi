@@ -29,6 +29,7 @@ import { runDailySearch, sendTick } from './services/prospect.service.js';
 import { seedAgentsIfNeeded } from './services/auth.service.js';
 import { seedAreasIfNeeded } from './services/area.service.js';
 import { requireAuth, requireAtLeastAtencionCliente } from './middleware/requireAuth.js';
+import { closeIdleBotConversations } from './services/botAutoClose.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -136,5 +137,11 @@ app.get('/health', (req, res) => {
 app.listen(PORT, () => {
   console.log(`[server] BOT-TECHDI corriendo en puerto ${PORT}`);
 });
+
+// Cada 30 min: archiva las charlas que atendió solo el bot y quedaron
+// inactivas (ver botAutoClose.js) para que cuenten como resueltas por el bot.
+const runAutoClose = () => closeIdleBotConversations().catch(err => console.error('[autoClose] Error:', err.message));
+setTimeout(runAutoClose, 2 * 60 * 1000);
+setInterval(runAutoClose, 30 * 60 * 1000);
 
 export default app;
