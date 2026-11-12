@@ -7,7 +7,7 @@ import { getDb } from './firebase.service.js';
 const RESULT_COLLECTION = 'bot-techdi_public_stats';
 const RESULT_DOC = 'resolved_counter';
 
-// ALTORANCHO / TECHDI / PMCSALUD / SELVAGGIO / ENTRENO comparten schema: resolvedAt se setea al
+// ALTORANCHO / TECHDI / PMCSALUD / SELVAGGIO / ENTRENO / YOGA / LINEA126 comparten schema: resolvedAt se setea al
 // cerrar (por el bot o por un agente), escalatedAt solo si en algún momento
 // pasó por un humano. resolvedAt seteado + escalatedAt ausente = lo resolvió
 // el bot solo, de punta a punta (mismo criterio que sus stats.routes.js).
@@ -41,16 +41,18 @@ async function countResolvedByBotGineza() {
 }
 
 export async function computeResolvedByBotTotals() {
-  const [altorancho, techdi, pmcsalud, selvaggio, entreno, gineza] = await Promise.all([
+  const [altorancho, techdi, pmcsalud, selvaggio, entreno, yoga, linea126, gineza] = await Promise.all([
     countResolvedByBotStandard('bot-altorancho_conversations'),
     countResolvedByBotStandard('bot-techdi_conversations'),
     countResolvedByBotStandard('bot-pmcsalud_conversations'),
     countResolvedByBotStandard('bot-selvaggio_conversations'),
     countResolvedByBotStandard('bot-entreno_conversations'),
+    countResolvedByBotStandard('bot-yoga_conversations'),
+    countResolvedByBotStandard('bot-linea126_conversations'),
     countResolvedByBotGineza(),
   ]);
 
-  const byBot = { altorancho, gineza, techdi, pmcsalud, selvaggio, entreno };
+  const byBot = { altorancho, gineza, techdi, pmcsalud, selvaggio, entreno, yoga, linea126 };
   const total = Object.values(byBot).reduce((a, b) => a + b, 0);
 
   const db = getDb();
